@@ -1,19 +1,21 @@
 import {
   Scene,
-  HemisphereLight,
-  DirectionalLight,
+  FogExp2,
+  Color,
   BoxGeometry,
   MeshStandardMaterial,
   Mesh,
-  Color,
-  FogExp2,
+  PointLight,
 } from 'three/webgpu';
 import { Renderer } from './render/Renderer';
+import { Sky } from './render/Sky';
+import { GroundMist } from './render/GroundMist';
 import { Time } from './core/Time';
 import { Input } from './core/Input';
 import { Game } from './core/Game';
 import { PlayerController } from './player/PlayerController';
 import { Terrain } from './world/Terrain';
+import { Forest } from './world/Forest';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -27,43 +29,46 @@ const time = new Time();
 const input = new Input(canvas);
 const game = new Game();
 
+// ── Fog & Background ──────────────────────────────────────────────────────────
+scene.fog = new FogExp2(0x0b1a1c, 0.018);
+scene.background = new Color(0x040e10);
+
 // ── Terrain ───────────────────────────────────────────────────────────────────
 const terrain = new Terrain();
 scene.add(terrain.getMesh());
+
+// ── Sky & Lighting ────────────────────────────────────────────────────────────
+const sky = new Sky(scene);
+scene.add(sky.moon.target);
+
+// ── Ground Mist ───────────────────────────────────────────────────────────────
+const groundMist = new GroundMist(scene);
+
+// ── Forest ────────────────────────────────────────────────────────────────────
+console.log('[Forest] Building instanced trees...');
+const forest = new Forest(terrain, 2500);
+for (const mesh of forest.getMeshes()) {
+  scene.add(mesh);
+}
+console.log('[Forest] Done.');
+
+// ── Test cube (M1 leftover, kept for M3 reference as a small landmark) ────────
+const cube = new Mesh(
+  new BoxGeometry(0.6, 0.6, 0.6),
+  new MeshStandardMaterial({ color: 0x44aacc, emissive: 0x224455 }),
+);
+cube.position.set(0, terrain.getHeight(0, 0) + 1.0, -5);
+scene.add(cube);
+
+// A small warm lantern-like placeholder light near spawn
+const spawnLight = new PointLight(0xffaa44, 2.0, 12);
+spawnLight.position.set(0, terrain.getHeight(0, 0) + 2.5, -5);
+scene.add(spawnLight);
 
 // ── Player ────────────────────────────────────────────────────────────────────
 const player = new PlayerController(input, terrain);
 scene.add(player.getObject());
 player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
-
-// ── Test cube (M1 visual) ─────────────────────────────────────────────────────
-const cube = new Mesh(
-  new BoxGeometry(1, 1, 1),
-  new MeshStandardMaterial({ color: 0x44aacc }),
-);
-cube.position.set(0, terrain.getHeight(0, 0) + 3, -8);
-cube.castShadow = true;
-scene.add(cube);
-
-// ── Lighting ──────────────────────────────────────────────────────────────────
-const ambient = new HemisphereLight(0x0d1f2a, 0x050d05, 0.4);
-scene.add(ambient);
-
-const moon = new DirectionalLight(0x8fb3c9, 0.5);
-moon.position.set(-50, 100, -80);
-moon.castShadow = true;
-moon.shadow.mapSize.set(2048, 2048);
-moon.shadow.camera.near = 1;
-moon.shadow.camera.far = 500;
-moon.shadow.camera.left = -120;
-moon.shadow.camera.right = 120;
-moon.shadow.camera.top = 120;
-moon.shadow.camera.bottom = -120;
-scene.add(moon);
-
-// ── Fog ───────────────────────────────────────────────────────────────────────
-scene.fog = new FogExp2(0x0b1a1c, 0.015);
-scene.background = new Color(0x040e10);
 
 // ── F3 FPS toggle ─────────────────────────────────────────────────────────────
 let showFps = false;
@@ -71,6 +76,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'F3') {
     showFps = !showFps;
     fpsEl.style.display = showFps ? 'block' : 'none';
+    e.preventDefault();
   }
 });
 
@@ -96,16 +102,21 @@ renderer.renderer.setAnimationLoop((now: number) => {
     game.transition('PLAYING');
   }
 
-  // Rotate test cube
-  cube.rotation.x += time.delta * 0.5;
-  cube.rotation.y += time.delta * 0.8;
+  // Animate test cube
+  cube.rotation.y += time.delta * 0.5;
 
-  // Update player if pointer locked
+  // Update player
   if (input.pointerLocked) {
     player.update(time.delta);
-    // Follow camera shadow anchor
-    moon.shadow.camera.position.copy(player.camera.position);
   }
+
+  // Update sky & mist
+  sky.update(time.elapsed);
+  const pp = player.getObject().position;
+  groundMist.update(time.elapsed, pp.x, pp.z);
+
+  // Track moon shadow near player
+  sky.moon.target.position.set(pp.x, 0, pp.z);
 
   if (showFps) {
     fpsEl.textContent = `FPS: ${time.fps}`;
