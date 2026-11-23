@@ -11,17 +11,21 @@ import { Input } from './core/Input';
 import { Game } from './core/Game';
 import { PlayerController } from './player/PlayerController';
 import { Flashlight } from './player/Flashlight';
+import { Weapon } from './player/Weapon';
+import { Radio } from './player/Radio';
 import { Terrain } from './world/Terrain';
 import { Forest } from './world/Forest';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const fpsEl = document.getElementById('fps-counter') as HTMLDivElement;
+const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
 const infoEl = document.getElementById('info-bar') as HTMLDivElement;
 const lightStateEl = document.getElementById('light-state') as HTMLSpanElement;
 const batteryFillEl = document.getElementById('battery-fill') as HTMLDivElement;
 const batteryPctEl = document.getElementById('battery-pct') as HTMLSpanElement;
 const batteryCountEl = document.getElementById('battery-count') as HTMLSpanElement;
+const ammoDisplayEl = document.getElementById('ammo-display') as HTMLSpanElement;
 const promptMsgEl = document.getElementById('prompt-msg') as HTMLDivElement;
 
 // ── Core systems ──────────────────────────────────────────────────────────────
@@ -32,8 +36,6 @@ const input = new Input(canvas);
 const game = new Game();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
-// Deep near-total night fog matching the horizon: #071214
-// Slightly denser fog (0.0165) so without the torch you are enveloped in darkness
 scene.fog = new FogExp2(0x071214, 0.0165);
 scene.background = new Color(0x071214);
 
@@ -62,6 +64,13 @@ player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
 
 // ── Flashlight (Milestone M4) ─────────────────────────────────────────────────
 const flashlight = new Flashlight(player.camera, scene);
+
+// ── Weapon & Radio HUD (Milestone M5) ─────────────────────────────────────────
+const weapon = new Weapon();
+player.camera.add(weapon.group);
+
+const radio = new Radio();
+player.camera.add(radio.group);
 
 // ── F3 FPS toggle ─────────────────────────────────────────────────────────────
 let showFps = true;
@@ -97,7 +106,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
     game.transition('PLAYING');
   }
 
-  // ── Input Handling for Flashlight ──
+  // ── Input Handling (Movement, Flashlight, Weapon) ──
   if (input.pointerLocked) {
     player.update(time.delta);
 
@@ -106,19 +115,50 @@ renderer.renderer.setAnimationLoop((now: number) => {
       flashlight.toggle();
     }
 
-    // Swap battery: [R]
+    // Reload weapon: [R] (tap). If ammo is full, swap flashlight battery
     if (input.isJustPressed('KeyR')) {
-      flashlight.startBatterySwap();
+      if (weapon.ammoInMag < weapon.magCapacity && weapon.reserveAmmo > 0) {
+        weapon.startReload();
+      } else {
+        flashlight.startBatterySwap();
+      }
     }
+
+    // Fire weapon: [LMB]
+    if (input.isMouseJustPressed(0)) {
+      weapon.tryFire();
+    }
+
+    // Aim down sights (ADS): [RMB]
+    weapon.setAiming(input.isMouseDown(2));
   }
 
-  // Clear single-frame key states
+  // Clear single-frame key & mouse triggers
   input.clearFrame();
+
+  // Update weapon & radio models in view
+  weapon.update(time.delta, player.camera);
+  radio.update(time.delta, flashlight.battery, weapon.ammoInMag, weapon.reserveAmmo);
 
   // Update flashlight physics & battery
   flashlight.update(time.delta);
 
-  // Update HUD
+  // Crosshair visibility fades out when aiming down sights
+  crosshairEl.style.opacity = weapon.isAiming ? '0' : '0.45';
+
+  // Update Weapon HUD
+  ammoDisplayEl.textContent = `${weapon.ammoInMag} / ${weapon.reserveAmmo}`;
+  if (weapon.isReloading) {
+    promptMsgEl.textContent = 'Reloading weapon...';
+    promptMsgEl.style.display = 'block';
+  } else if (flashlight.isSwapping) {
+    promptMsgEl.textContent = 'Swapping battery...';
+    promptMsgEl.style.display = 'block';
+  } else {
+    promptMsgEl.style.display = 'none';
+  }
+
+  // Update Flashlight HUD
   const pct = Math.round(flashlight.battery);
   batteryPctEl.textContent = `${pct}%`;
   batteryFillEl.style.width = `${pct}%`;
@@ -134,10 +174,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
   if (flashlight.isSwapping) {
     lightStateEl.textContent = 'SWAPPING...';
     lightStateEl.style.color = '#f0a030';
-    promptMsgEl.textContent = 'Swapping battery...';
-    promptMsgEl.style.display = 'block';
   } else {
-    promptMsgEl.style.display = 'none';
     if (flashlight.isOn) {
       lightStateEl.textContent = 'ON';
       lightStateEl.style.color = '#70f0a0';

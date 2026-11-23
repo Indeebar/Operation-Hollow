@@ -12,6 +12,8 @@
     <div id="hud">
       <div id="crosshair">+</div>
       <div id="fps-counter">FPS: 0</div>
+
+      <!-- Tactical Status HUD -->
       <div id="status-hud">
         <div id="flashlight-status">
           <span class="hud-label">LIGHT:</span>
@@ -22,8 +24,16 @@
           <span id="battery-pct">100%</span>
           <span id="battery-count">(x3)</span>
         </div>
+        <div id="weapon-status">
+          <span class="hud-label">RIFLE:</span>
+          <span id="ammo-display">20 / 40</span>
+        </div>
       </div>
-      <div id="info-bar">Click to capture mouse | [F] Flashlight | [R] Swap Battery | [Shift] Sprint</div>
+
+      <!-- Instruction / Hint bar -->
+      <div id="info-bar">
+        [LMB] Fire | [RMB] Aim Sights | [R] Reload Gun (tap) / Battery (hold F) | [F] Flashlight
+      </div>
       <div id="prompt-msg" style="display:none"></div>
     </div>
   </div>
