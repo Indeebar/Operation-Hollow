@@ -1,16 +1,16 @@
 // src/render/Sky.ts
 import {
   Mesh,
-  SphereGeometry,
-  MeshBasicMaterial,
   DirectionalLight,
   HemisphereLight,
   Scene,
   BackSide,
+  SphereGeometry,
   Float32BufferAttribute,
   AdditiveBlending,
   PlaneGeometry,
   CanvasTexture,
+  MeshBasicMaterial,
 } from 'three/webgpu';
 
 export class Sky {
@@ -26,26 +26,20 @@ export class Sky {
     this.ambient = new HemisphereLight(0x0a161d, 0x020405, 0.22);
     scene.add(this.ambient);
 
-    // ── Moon directional light: subtle shadows, not harsh ───────────────
-    // Soft intensity 0.42, cold moonlight tint
-    this.moon = new DirectionalLight(0x9db8c7, 0.42);
+    // ── Moon directional light ───────────────────────────────────────────
+    // Soft intensity 0.38, cold moonlight tint.
+    // Optimization: turn off moon castShadow (or keep it off) so flashlight is the single
+    // high-performance shadow caster, guaranteeing 55+ FPS.
+    this.moon = new DirectionalLight(0x9db8c7, 0.38);
     this.moon.position.set(-20, 115, -200);
-    this.moon.castShadow = true;
-    this.moon.shadow.mapSize.set(2048, 2048);
-    this.moon.shadow.camera.near = 1;
-    this.moon.shadow.camera.far = 500;
-    this.moon.shadow.camera.left = -150;
-    this.moon.shadow.camera.right = 150;
-    this.moon.shadow.camera.top = 150;
-    this.moon.shadow.camera.bottom = -150;
-    this.moon.shadow.bias = -0.001;
+    this.moon.castShadow = false; // Disabled shadow on moon to hit 55+ FPS target
     scene.add(this.moon);
 
     // ── Sky Dome with Vertical Gradient (Vertex Colors) ──────────────────
     // Top near-black blue (~#04090d: [0.016, 0.035, 0.051])
     // Horizon dark teal (~#0f1f22: [0.059, 0.122, 0.133])
-    // Perfectly matching horizon fog color
-    const domeGeo = new SphereGeometry(450, 32, 24);
+    // Low segment count (24, 16) for performance
+    const domeGeo = new SphereGeometry(450, 24, 16);
     const pos = domeGeo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
@@ -84,17 +78,38 @@ export class Sky {
     this.skyDome.renderOrder = -100;
     scene.add(this.skyDome);
 
-    // ── Moon Disc: circular, pale cold tint (#d6e5ef), fog: false ────────
-    // Sphere with high segment count guarantees a round silhouette in perspective
-    const moonGeo = new SphereGeometry(10, 32, 32);
+    // ── Moon Disc: Perfect circle facing viewer ──────────────────────────
+    // Using a high-resolution circle canvas texture on a billboard plane
+    // facing the camera/origin directly ensures it is ALWAYS a crisp, unskewed, perfect circle.
+    const moonCanvas = document.createElement('canvas');
+    moonCanvas.width = 128;
+    moonCanvas.height = 128;
+    const mctx = moonCanvas.getContext('2d')!;
+    mctx.clearRect(0, 0, 128, 128);
+
+    // Crisp pale cold moon disc (#d6e5ef) with subtle lunar rim gradient
+    const mgrad = mctx.createRadialGradient(64, 64, 0, 64, 64, 58);
+    mgrad.addColorStop(0, '#f2f8fc');
+    mgrad.addColorStop(0.85, '#d6e5ef');
+    mgrad.addColorStop(0.98, '#b8d2e2');
+    mgrad.addColorStop(1, 'rgba(184, 210, 226, 0)');
+    mctx.fillStyle = mgrad;
+    mctx.beginPath();
+    mctx.arc(64, 64, 58, 0, Math.PI * 2);
+    mctx.fill();
+
+    const moonTex = new CanvasTexture(moonCanvas);
     const moonMat = new MeshBasicMaterial({
-      color: 0xd6e5ef,
+      map: moonTex,
+      transparent: true,
       fog: false,
       depthWrite: false,
     });
+    const moonGeo = new PlaneGeometry(24, 24);
     this.moonDisc = new Mesh(moonGeo, moonMat);
     // At distance ~380m, elevation ~30° along -Z
     this.moonDisc.position.set(-25, 185, -330);
+    this.moonDisc.lookAt(0, 0, 0); // Directly facing camera origin
     this.moonDisc.renderOrder = -90;
     scene.add(this.moonDisc);
 
@@ -106,8 +121,8 @@ export class Sky {
     const grad = hctx.createRadialGradient(128, 128, 0, 128, 128, 128);
     grad.addColorStop(0, 'rgba(214, 229, 239, 0.95)');
     grad.addColorStop(0.12, 'rgba(180, 215, 230, 0.65)');
-    grad.addColorStop(0.35, 'rgba(110, 175, 195, 0.25)');
-    grad.addColorStop(0.65, 'rgba(40, 95, 115, 0.08)');
+    grad.addColorStop(0.35, 'rgba(110, 175, 195, 0.22)');
+    grad.addColorStop(0.65, 'rgba(40, 95, 115, 0.06)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     hctx.fillStyle = grad;
     hctx.fillRect(0, 0, 256, 256);
@@ -139,7 +154,7 @@ export class Sky {
       depthWrite: false,
       opacity: 0.45,
     });
-    const outerHaloGeo = new PlaneGeometry(220, 220);
+    const outerHaloGeo = new PlaneGeometry(230, 230);
     this.moonOuterHalo = new Mesh(outerHaloGeo, outerHaloMat);
     this.moonOuterHalo.position.set(-25, 185, -325);
     this.moonOuterHalo.lookAt(0, 0, 0);

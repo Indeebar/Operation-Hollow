@@ -41,14 +41,13 @@ scene.add(terrain.getMesh());
 
 // ── Sky & Lighting ────────────────────────────────────────────────────────────
 const sky = new Sky(scene);
-scene.add(sky.moon.target);
 
 // ── Ground Mist ───────────────────────────────────────────────────────────────
 const groundMist = new GroundMist(scene);
 
-// ── Forest (instanced trees, dead trees, ferns, rocks, fallen logs) ───────────
+// ── Forest (optimized instanced trees with distance culling <= 92m) ───────────
 console.log('[Forest] Building instanced trees and forest clutter...');
-const forest = new Forest(terrain, 3400);
+const forest = new Forest(terrain, 2600);
 for (const mesh of forest.getMeshes()) {
   scene.add(mesh);
 }
@@ -147,16 +146,14 @@ renderer.renderer.setAnimationLoop((now: number) => {
   }
   batteryCountEl.textContent = `(x${flashlight.spareBatteries})`;
 
-  // Update sky dome centering and mist drift
+  // Update sky dome, ground mist, and forest culling
   const pp = player.getObject().position;
   sky.update(time.elapsed, pp.x, pp.y, pp.z);
   groundMist.update(time.elapsed, pp.x, pp.z);
-
-  // Position directional moon shadow camera near player
-  sky.moon.target.position.set(pp.x, pp.y, pp.z);
+  forest.update(pp.x, pp.z);
 
   if (showFps) {
-    fpsEl.textContent = `FPS: ${time.fps}`;
+    fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'}`;
   }
 
   renderer.renderer.render(scene, player.camera);
