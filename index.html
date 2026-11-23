@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hollow Watch</title>
+  <link rel="stylesheet" href="/src/ui/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+      <div id="crosshair">+</div>
+      <div id="fps-counter" style="display:none">FPS: 0</div>
+      <div id="info-bar">Click to start | WASD move | Mouse look | F3: FPS</div>
+      <div id="pointer-lock-msg" style="display:none">Click to capture mouse</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
