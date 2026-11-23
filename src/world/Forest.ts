@@ -79,11 +79,22 @@ interface TreeData {
 export class Forest {
   private meshes: Object3D[] = [];
 
-  private bottomConeMesh: InstancedMesh;
-  private midConeMesh: InstancedMesh;
-  private topConeMesh: InstancedMesh;
-  private trunkMesh: InstancedMesh;
+  // Near LOD trees (<= 30m): 3 stacked cones, castShadow enabled
+  private nearFoliageMesh: InstancedMesh;
+  private nearTrunkMesh: InstancedMesh;
+
+  // Far LOD trees (> 30m): 1 simple cone + trunk, NO castShadow (massive GPU fillrate saving)
+  private farFoliageMesh: InstancedMesh;
+  private farTrunkMesh: InstancedMesh;
+
+  // Dead trees
   private deadMesh: InstancedMesh;
+
+  // Clutter meshes
+  private fernMesh: InstancedMesh;
+  private rockMesh: InstancedMesh;
+  private logMesh: InstancedMesh;
+  clutterVisible: boolean = true;
 
   private trees: TreeData[] = [];
   private deadTrees: TreeData[] = [];
@@ -92,34 +103,12 @@ export class Forest {
   private lastCullPos: Vector3 = new Vector3(9999, 9999, 9999);
   currentCullDist: number = 88;
 
-  constructor(terrain: Terrain, totalTreeCount = 2200) {
+  constructor(terrain: Terrain, totalTreeCount = 2000) {
     const rng = seededRand(42);
 
-    // Highly optimized low-poly tree primitives (4-5 radial segments)
-    const jitterGeo = (geo: ConeGeometry | CylinderGeometry, amount = 0.08) => {
-      const pos = geo.attributes.position;
-      const jrng = seededRand(1234);
-      for (let i = 0; i < pos.count; i++) {
-        const jx = (jrng() - 0.5) * amount;
-        const jz = (jrng() - 0.5) * amount;
-        pos.setX(i, pos.getX(i) + jx);
-        pos.setZ(i, pos.getZ(i) + jz);
-      }
-      pos.needsUpdate = true;
-      geo.computeVertexNormals();
-    };
-
-    const bottomConeGeo = new ConeGeometry(1.3, 1.9, 5);
-    bottomConeGeo.translate(0, 1.5, 0);
-    jitterGeo(bottomConeGeo, 0.10);
-
-    const midConeGeo = new ConeGeometry(0.98, 1.7, 5);
-    midConeGeo.translate(0, 2.5, 0);
-    jitterGeo(midConeGeo, 0.08);
-
-    const topConeGeo = new ConeGeometry(0.62, 1.5, 5);
-    topConeGeo.translate(0, 3.5, 0);
-    jitterGeo(topConeGeo, 0.06);
+    // ── 1. Near Trees (<= 30m from player, casts shadows only within 25m) ──
+    const nearFoliageGeo = new ConeGeometry(1.2, 3.8, 5);
+    nearFoliageGeo.translate(0, 2.6, 0);
 
     const foliageMat = new MeshStandardMaterial({
       color: new Color(0x060f08),
@@ -127,32 +116,40 @@ export class Forest {
       metalness: 0.0,
     });
 
-    this.bottomConeMesh = new InstancedMesh(bottomConeGeo, foliageMat, totalTreeCount);
-    this.bottomConeMesh.castShadow = true;
-    this.bottomConeMesh.receiveShadow = true;
-
-    this.midConeMesh = new InstancedMesh(midConeGeo, foliageMat, totalTreeCount);
-    this.midConeMesh.castShadow = true;
-    this.midConeMesh.receiveShadow = true;
-
-    this.topConeMesh = new InstancedMesh(topConeGeo, foliageMat, totalTreeCount);
-    this.topConeMesh.castShadow = true;
-    this.topConeMesh.receiveShadow = true;
-
-    const trunkGeo = new CylinderGeometry(0.12, 0.20, 1.3, 4);
-    trunkGeo.translate(0, 0.65, 0);
     const trunkMat = new MeshStandardMaterial({
       color: new Color(0x0e0a06),
       roughness: 0.98,
       metalness: 0.0,
     });
-    this.trunkMesh = new InstancedMesh(trunkGeo, trunkMat, totalTreeCount);
-    this.trunkMesh.castShadow = true;
 
+    const nearTrunkGeo = new CylinderGeometry(0.12, 0.20, 1.3, 4);
+    nearTrunkGeo.translate(0, 0.65, 0);
+
+    this.nearFoliageMesh = new InstancedMesh(nearFoliageGeo, foliageMat, 600);
+    this.nearFoliageMesh.castShadow = true;
+    this.nearFoliageMesh.receiveShadow = true;
+
+    this.nearTrunkMesh = new InstancedMesh(nearTrunkGeo, trunkMat, 600);
+    this.nearTrunkMesh.castShadow = true;
+
+    // ── 2. Far Trees (> 30m to 90m): Lightweight single cone, NO shadow casting ──
+    const farFoliageGeo = new ConeGeometry(1.2, 3.8, 4);
+    farFoliageGeo.translate(0, 2.6, 0);
+
+    const farTrunkGeo = new CylinderGeometry(0.12, 0.20, 1.3, 3);
+    farTrunkGeo.translate(0, 0.65, 0);
+
+    this.farFoliageMesh = new InstancedMesh(farFoliageGeo, foliageMat, totalTreeCount);
+    this.farFoliageMesh.castShadow = false; // Never casts shadows -> saves thousands of shadow draw calls!
+    this.farFoliageMesh.receiveShadow = true;
+
+    this.farTrunkMesh = new InstancedMesh(farTrunkGeo, trunkMat, totalTreeCount);
+    this.farTrunkMesh.castShadow = false;
+
+    // ── 3. Dead Trees ────────────────────────────────────────────────────
     const deadCount = Math.floor(totalTreeCount * 0.10);
     const deadGeo = new CylinderGeometry(0.06, 0.16, 5.0, 4);
     deadGeo.translate(0, 2.5, 0);
-    jitterGeo(deadGeo, 0.12);
     const deadMat = new MeshStandardMaterial({
       color: new Color(0x0a0805),
       roughness: 1.0,
@@ -160,12 +157,13 @@ export class Forest {
     this.deadMesh = new InstancedMesh(deadGeo, deadMat, deadCount);
     this.deadMesh.castShadow = true;
 
+    // ── Generate Tree Positions ──────────────────────────────────────────
     for (let i = 0; i < totalTreeCount; i++) {
       let x = 0;
       let z = 0;
       let attempts = 0;
 
-      const forceNear = i < 950;
+      const forceNear = i < 850;
       const maxRadius = forceNear ? 60 : 185;
 
       do {
@@ -185,7 +183,6 @@ export class Forest {
       );
 
       const y = terrain.getHeight(x, z);
-
       const scale = 0.75 + rng() * 0.9;
       const heightMult = Math.min(1.8 / scale, 0.85 + rng() * 0.35);
 
@@ -235,17 +232,15 @@ export class Forest {
     }
 
     this.meshes.push(
-      this.bottomConeMesh,
-      this.midConeMesh,
-      this.topConeMesh,
-      this.trunkMesh,
+      this.nearFoliageMesh,
+      this.nearTrunkMesh,
+      this.farFoliageMesh,
+      this.farTrunkMesh,
       this.deadMesh,
     );
 
-    this.cullPast(0, 0, this.currentCullDist);
-
     // Ferns
-    const fernCount = 450;
+    const fernCount = 350;
     const fernTex = createFernTexture();
     const fernGeo = new PlaneGeometry(0.7, 0.7);
     fernGeo.translate(0, 0.35, 0);
@@ -259,11 +254,11 @@ export class Forest {
       metalness: 0.0,
       depthWrite: true,
     });
-    const fernMesh = new InstancedMesh(fernGeo, fernMat, fernCount);
+    this.fernMesh = new InstancedMesh(fernGeo, fernMat, fernCount);
 
     const rng2 = seededRand(888);
     for (let i = 0; i < fernCount; i++) {
-      const rad = 2.2 + Math.sqrt(rng2()) * 55;
+      const rad = 2.2 + Math.sqrt(rng2()) * 50;
       const ang = rng2() * Math.PI * 2;
       const fx = Math.cos(ang) * rad;
       const fz = Math.sin(ang) * rad;
@@ -274,24 +269,24 @@ export class Forest {
       this.dummy.rotation.set((rng2() - 0.5) * 0.2, rng2() * Math.PI * 2, (rng2() - 0.5) * 0.2);
       this.dummy.scale.set(fscale, fscale, fscale);
       this.dummy.updateMatrix();
-      fernMesh.setMatrixAt(i, this.dummy.matrix);
+      this.fernMesh.setMatrixAt(i, this.dummy.matrix);
     }
-    fernMesh.instanceMatrix.needsUpdate = true;
-    this.meshes.push(fernMesh);
+    this.fernMesh.instanceMatrix.needsUpdate = true;
+    this.meshes.push(this.fernMesh);
 
     // Rocks
-    const rockCount = 90;
+    const rockCount = 70;
     const rockGeo = new DodecahedronGeometry(0.28, 0);
     const rockMat = new MeshStandardMaterial({
       color: new Color(0x111315),
       roughness: 0.85,
       metalness: 0.1,
     });
-    const rockMesh = new InstancedMesh(rockGeo, rockMat, rockCount);
+    this.rockMesh = new InstancedMesh(rockGeo, rockMat, rockCount);
 
     const rng3 = seededRand(555);
     for (let i = 0; i < rockCount; i++) {
-      const rad = 3.0 + Math.sqrt(rng3()) * 60;
+      const rad = 3.0 + Math.sqrt(rng3()) * 55;
       const ang = rng3() * Math.PI * 2;
       const rx = Math.cos(ang) * rad;
       const rz = Math.sin(ang) * rad;
@@ -302,13 +297,13 @@ export class Forest {
       this.dummy.rotation.set(rng3() * Math.PI, rng3() * Math.PI, rng3() * Math.PI);
       this.dummy.scale.set(rscale, rscale * 0.5, rscale * 1.2);
       this.dummy.updateMatrix();
-      rockMesh.setMatrixAt(i, this.dummy.matrix);
+      this.rockMesh.setMatrixAt(i, this.dummy.matrix);
     }
-    rockMesh.instanceMatrix.needsUpdate = true;
-    this.meshes.push(rockMesh);
+    this.rockMesh.instanceMatrix.needsUpdate = true;
+    this.meshes.push(this.rockMesh);
 
     // Logs
-    const logCount = 30;
+    const logCount = 25;
     const logGeo = new CylinderGeometry(0.13, 0.16, 3.8, 4);
     logGeo.rotateZ(Math.PI / 2);
     const logMat = new MeshStandardMaterial({
@@ -316,11 +311,11 @@ export class Forest {
       roughness: 0.95,
       metalness: 0.0,
     });
-    const logMesh = new InstancedMesh(logGeo, logMat, logCount);
+    this.logMesh = new InstancedMesh(logGeo, logMat, logCount);
 
     const rng4 = seededRand(333);
     for (let i = 0; i < logCount; i++) {
-      const rad = 6.0 + Math.sqrt(rng4()) * 65;
+      const rad = 6.0 + Math.sqrt(rng4()) * 60;
       const ang = rng4() * Math.PI * 2;
       const lx = Math.cos(ang) * rad;
       const lz = Math.sin(ang) * rad;
@@ -332,10 +327,19 @@ export class Forest {
       this.dummy.rotation.set((rng4() - 0.5) * 0.1, rng4() * Math.PI * 2, (rng4() - 0.5) * 0.1);
       this.dummy.scale.set(lscale, lscale, lscale);
       this.dummy.updateMatrix();
-      logMesh.setMatrixAt(i, this.dummy.matrix);
+      this.logMesh.setMatrixAt(i, this.dummy.matrix);
     }
-    logMesh.instanceMatrix.needsUpdate = true;
-    this.meshes.push(logMesh);
+    this.logMesh.instanceMatrix.needsUpdate = true;
+    this.meshes.push(this.logMesh);
+
+    this.cullPast(0, 0, this.currentCullDist);
+  }
+
+  setClutterVisible(visible: boolean): void {
+    this.clutterVisible = visible;
+    this.fernMesh.visible = visible;
+    this.rockMesh.visible = visible;
+    this.logMesh.visible = visible;
   }
 
   setQuality(preset: 'low' | 'medium' | 'high'): void {
@@ -347,45 +351,53 @@ export class Forest {
 
   cullPast(playerX: number, playerZ: number, maxDist = 88): void {
     const maxDistSq = maxDist * maxDist;
-    let visibleCount = 0;
+    const nearDistSq = 25 * 25; // Shadows only for trees within 25 m!
+
+    let nearCount = 0;
+    let farCount = 0;
 
     for (let i = 0; i < this.trees.length; i++) {
       const t = this.trees[i];
       const dx = t.x - playerX;
       const dz = t.z - playerZ;
-      if (dx * dx + dz * dz <= maxDistSq) {
+      const distSq = dx * dx + dz * dz;
+
+      if (distSq <= maxDistSq) {
         this.dummy.position.set(t.x, t.y, t.z);
         this.dummy.rotation.set(t.rotX, t.rotY, t.rotZ);
         this.dummy.scale.set(t.scaleX, t.scaleY, t.scaleZ);
         this.dummy.updateMatrix();
 
-        this.bottomConeMesh.setMatrixAt(visibleCount, this.dummy.matrix);
-        this.midConeMesh.setMatrixAt(visibleCount, this.dummy.matrix);
-        this.topConeMesh.setMatrixAt(visibleCount, this.dummy.matrix);
-        this.trunkMesh.setMatrixAt(visibleCount, this.dummy.matrix);
-
-        this.bottomConeMesh.setColorAt(visibleCount, t.color);
-        this.midConeMesh.setColorAt(visibleCount, t.color);
-        this.topConeMesh.setColorAt(visibleCount, t.color);
-
-        visibleCount++;
+        if (distSq <= nearDistSq && nearCount < 600) {
+          // Near shadow-casting tree
+          this.nearFoliageMesh.setMatrixAt(nearCount, this.dummy.matrix);
+          this.nearTrunkMesh.setMatrixAt(nearCount, this.dummy.matrix);
+          this.nearFoliageMesh.setColorAt(nearCount, t.color);
+          nearCount++;
+        } else {
+          // Far non-shadow tree
+          this.farFoliageMesh.setMatrixAt(farCount, this.dummy.matrix);
+          this.farTrunkMesh.setMatrixAt(farCount, this.dummy.matrix);
+          this.farFoliageMesh.setColorAt(farCount, t.color);
+          farCount++;
+        }
       }
     }
 
-    this.bottomConeMesh.count = visibleCount;
-    this.midConeMesh.count = visibleCount;
-    this.topConeMesh.count = visibleCount;
-    this.trunkMesh.count = visibleCount;
+    this.nearFoliageMesh.count = nearCount;
+    this.nearTrunkMesh.count = nearCount;
+    this.farFoliageMesh.count = farCount;
+    this.farTrunkMesh.count = farCount;
 
-    this.bottomConeMesh.instanceMatrix.needsUpdate = true;
-    this.midConeMesh.instanceMatrix.needsUpdate = true;
-    this.topConeMesh.instanceMatrix.needsUpdate = true;
-    this.trunkMesh.instanceMatrix.needsUpdate = true;
+    this.nearFoliageMesh.instanceMatrix.needsUpdate = true;
+    this.nearTrunkMesh.instanceMatrix.needsUpdate = true;
+    this.farFoliageMesh.instanceMatrix.needsUpdate = true;
+    this.farTrunkMesh.instanceMatrix.needsUpdate = true;
 
-    if (this.bottomConeMesh.instanceColor) this.bottomConeMesh.instanceColor.needsUpdate = true;
-    if (this.midConeMesh.instanceColor) this.midConeMesh.instanceColor.needsUpdate = true;
-    if (this.topConeMesh.instanceColor) this.topConeMesh.instanceColor.needsUpdate = true;
+    if (this.nearFoliageMesh.instanceColor) this.nearFoliageMesh.instanceColor.needsUpdate = true;
+    if (this.farFoliageMesh.instanceColor) this.farFoliageMesh.instanceColor.needsUpdate = true;
 
+    // Dead trees
     let deadVisible = 0;
     for (let i = 0; i < this.deadTrees.length; i++) {
       const dt = this.deadTrees[i];

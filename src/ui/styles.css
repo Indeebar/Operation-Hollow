@@ -70,6 +70,61 @@ body {
   cursor: pointer;
 }
 
+#debug-panel {
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  background: rgba(5, 12, 16, 0.92);
+  border: 1px solid rgba(56, 224, 120, 0.4);
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #cbe3eb;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.9);
+  z-index: 100;
+}
+
+.dbg-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  color: #38e078;
+  border-bottom: 1px solid rgba(56, 224, 120, 0.2);
+  padding-bottom: 4px;
+}
+
+.dbg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dbg-row label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dbg-btn {
+  background: rgba(20, 35, 45, 0.9);
+  border: 1px solid rgba(80, 160, 200, 0.4);
+  color: #aef;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dbg-btn:hover {
+  background: rgba(30, 60, 80, 0.9);
+}
+
 #status-hud {
   position: absolute;
   bottom: 24px;

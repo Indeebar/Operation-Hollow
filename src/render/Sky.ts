@@ -22,42 +22,40 @@ export class Sky {
   ambient: HemisphereLight;
 
   constructor(scene: Scene) {
-    // ── Deep Horror Night Lighting ─────────────────────────────────────────
-    // Pitch darkness without the flashlight
     this.ambient = new HemisphereLight(0x02070a, 0x000101, 0.015);
     scene.add(this.ambient);
 
-    // ── Moon directional light: faint cold moonlight (~0.04) ───────────────
-    // Faint specular sheen on wet terrain, trees remain dark silhouettes
     this.moon = new DirectionalLight(0x5c7f99, 0.04);
     this.moon.position.set(-20, 115, -200);
-    this.moon.castShadow = false;
+    this.moon.castShadow = false; // Moon shadows off by default
+    this.moon.shadow.mapSize.set(1024, 1024);
+    this.moon.shadow.camera.near = 1;
+    this.moon.shadow.camera.far = 120;
+    this.moon.shadow.camera.left = -40;
+    this.moon.shadow.camera.right = 40;
+    this.moon.shadow.camera.top = 40;
+    this.moon.shadow.camera.bottom = -40;
     scene.add(this.moon);
 
-    // ── Sky Dome with Vertical Gradient (Deep Horror Night) ─────────────────
-    // Top pitch-black (~#000204: [0.001, 0.005, 0.01])
-    // Horizon deep murky night teal (~#03090a: [0.012, 0.035, 0.04])
-    const domeGeo = new SphereGeometry(450, 24, 16);
+    // Sky Dome
+    const domeGeo = new SphereGeometry(450, 20, 14);
     const pos = domeGeo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i);
-      const normalizedY = y / 450; // -1 to 1
+      const normalizedY = y / 450;
 
       let r: number, g: number, b: number;
       if (normalizedY >= 0) {
-        // Horizon (0) to Zenith (1)
         const t = Math.pow(normalizedY, 0.7);
         r = (1 - t) * 0.012 + t * 0.001;
         g = (1 - t) * 0.035 + t * 0.005;
         b = (1 - t) * 0.04 + t * 0.01;
       } else {
-        // Below horizon into pitch black
-        const t = Math.min(1, -normalizedY * 3);
-        r = (1 - t) * 0.012;
-        g = (1 - t) * 0.035;
-        b = (1 - t) * 0.04;
+        r = 0.012;
+        g = 0.035;
+        b = 0.04;
       }
 
       colors[i * 3] = r;
@@ -76,7 +74,7 @@ export class Sky {
     this.skyDome.renderOrder = -100;
     scene.add(this.skyDome);
 
-    // ── Moon Disc: Perfect circle facing viewer ──────────────────────────
+    // Moon Disc
     const moonCanvas = document.createElement('canvas');
     moonCanvas.width = 128;
     moonCanvas.height = 128;
@@ -107,7 +105,7 @@ export class Sky {
     this.moonDisc.renderOrder = -90;
     scene.add(this.moonDisc);
 
-    // ── Moon Halos ────────────────────────────────────────────────────────
+    // Moon Halos
     const haloCanvas = document.createElement('canvas');
     haloCanvas.width = 256;
     haloCanvas.height = 256;
@@ -123,7 +121,6 @@ export class Sky {
 
     const haloTex = new CanvasTexture(haloCanvas);
 
-    // Inner bright halo
     const innerHaloMat = new MeshBasicMaterial({
       map: haloTex,
       transparent: true,
@@ -132,14 +129,12 @@ export class Sky {
       depthWrite: false,
       opacity: 0.65,
     });
-    const innerHaloGeo = new PlaneGeometry(80, 80);
-    this.moonHalo = new Mesh(innerHaloGeo, innerHaloMat);
+    this.moonHalo = new Mesh(new PlaneGeometry(80, 80), innerHaloMat);
     this.moonHalo.position.set(-25, 185, -326);
     this.moonHalo.lookAt(0, 0, 0);
     this.moonHalo.renderOrder = -88;
     scene.add(this.moonHalo);
 
-    // Outer soft atmospheric haze halo
     const outerHaloMat = new MeshBasicMaterial({
       map: haloTex,
       transparent: true,
@@ -148,12 +143,15 @@ export class Sky {
       depthWrite: false,
       opacity: 0.22,
     });
-    const outerHaloGeo = new PlaneGeometry(180, 180);
-    this.moonOuterHalo = new Mesh(outerHaloGeo, outerHaloMat);
+    this.moonOuterHalo = new Mesh(new PlaneGeometry(180, 180), outerHaloMat);
     this.moonOuterHalo.position.set(-25, 185, -325);
     this.moonOuterHalo.lookAt(0, 0, 0);
     this.moonOuterHalo.renderOrder = -87;
     scene.add(this.moonOuterHalo);
+  }
+
+  setMoonShadow(enabled: boolean): void {
+    this.moon.castShadow = enabled;
   }
 
   update(_elapsed: number, playerX = 0, playerY = 0, playerZ = 0): void {

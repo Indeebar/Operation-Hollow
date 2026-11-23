@@ -29,9 +29,21 @@ const batteryCountEl = document.getElementById('battery-count') as HTMLSpanEleme
 const ammoDisplayEl = document.getElementById('ammo-display') as HTMLSpanElement;
 const promptMsgEl = document.getElementById('prompt-msg') as HTMLDivElement;
 
+// Debug panel refs
+const debugPanel = document.getElementById('debug-panel') as HTMLDivElement;
+const dbgFpsLive = document.getElementById('dbg-fps-live') as HTMLSpanElement;
+const dbgMoonShadow = document.getElementById('dbg-moon-shadow') as HTMLInputElement;
+const dbgTorchShadow = document.getElementById('dbg-torch-shadow') as HTMLInputElement;
+const dbgMist = document.getElementById('dbg-mist') as HTMLInputElement;
+const dbgClutter = document.getElementById('dbg-clutter') as HTMLInputElement;
+const dbgViewmodelPass = document.getElementById('dbg-viewmodel-pass') as HTMLInputElement;
+const dbgPr10 = document.getElementById('dbg-pr-10') as HTMLButtonElement;
+const dbgPr125 = document.getElementById('dbg-pr-125') as HTMLButtonElement;
+const dbgPr15 = document.getElementById('dbg-pr-15') as HTMLButtonElement;
+
 // ── Core systems ──────────────────────────────────────────────────────────────
 const renderer = new Renderer(canvas);
-renderer.renderer.autoClear = false; // Required for 2-pass viewmodel depth clearing!
+renderer.renderer.autoClear = false;
 
 const scene = new Scene();
 const viewmodelScene = new Scene();
@@ -51,12 +63,12 @@ scene.add(terrain.getMesh());
 // ── Sky & Lighting ────────────────────────────────────────────────────────────
 const sky = new Sky(scene);
 
-// ── Ground Mist ───────────────────────────────────────────────────────────────
+// ── Ground Mist (2 layers) ────────────────────────────────────────────────────
 const groundMist = new GroundMist(scene);
 
-// ── Forest (culling <= 88m default) ───────────────────────────────────────────
-console.log('[Forest] Building instanced trees and forest clutter...');
-const forest = new Forest(terrain, 2200);
+// ── Forest (Tree LODs, 25m shadow cutoff, <=88m culling) ─────────────────────
+console.log('[Forest] Building instanced trees with near/far LODs...');
+const forest = new Forest(terrain, 2000);
 for (const mesh of forest.getMeshes()) {
   scene.add(mesh);
 }
@@ -67,19 +79,19 @@ const player = new PlayerController(input, terrain);
 scene.add(player.getObject());
 player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
 
-// ── Flashlight (Decoupled from weapon, smoothed camera lag) ───────────────────
+// ── Flashlight ────────────────────────────────────────────────────────────────
 const flashlight = new Flashlight(player.camera, scene);
 
-// ── Viewmodel Rig (Weapon + Left Arm/Hand + Wrist Device) ─────────────────────
-// Attached to its own isolated viewmodelScene, rendered with autoClear=false + clearDepth()
+// ── Viewmodel Rig ─────────────────────────────────────────────────────────────
 const viewmodel = new ViewmodelRig();
 viewmodelScene.add(viewmodel.group);
 
 // Dedicated input states
 let rKeyHeldDuration = 0;
 let rKeyTriggeredHold = false;
+let renderViewmodelPass = true;
 
-// ── Quality Toggle Functionality ──────────────────────────────────────────────
+// ── Quality Settings ──────────────────────────────────────────────────────────
 function updateQualityUI(preset: string): void {
   qualityToggleEl.textContent = `QUALITY: ${preset.toUpperCase()}`;
   forest.setQuality(preset as 'low' | 'medium' | 'high');
@@ -89,7 +101,43 @@ qualityToggleEl.addEventListener('click', () => {
   updateQualityUI(newQ);
 });
 
-// ── F3 FPS toggle & Keyboard Shortcuts ────────────────────────────────────────
+// ── F4 Debug Panel Setup & Toggles ───────────────────────────────────────────
+let debugOpen = false;
+function toggleDebugPanel(): void {
+  debugOpen = !debugOpen;
+  debugPanel.style.display = debugOpen ? 'flex' : 'none';
+}
+
+dbgMoonShadow.addEventListener('change', () => {
+  sky.setMoonShadow(dbgMoonShadow.checked);
+});
+dbgTorchShadow.addEventListener('change', () => {
+  flashlight.setShadow(dbgTorchShadow.checked);
+});
+dbgMist.addEventListener('change', () => {
+  groundMist.setVisible(dbgMist.checked);
+});
+dbgClutter.addEventListener('change', () => {
+  forest.setClutterVisible(dbgClutter.checked);
+});
+dbgViewmodelPass.addEventListener('change', () => {
+  renderViewmodelPass = dbgViewmodelPass.checked;
+});
+
+dbgPr10.addEventListener('click', () => {
+  renderer.renderer.setPixelRatio(1.0);
+  renderer.renderer.setSize(window.innerWidth, window.innerHeight);
+});
+dbgPr125.addEventListener('click', () => {
+  renderer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  renderer.renderer.setSize(window.innerWidth, window.innerHeight);
+});
+dbgPr15.addEventListener('click', () => {
+  renderer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── F3 / F4 Key Listeners ─────────────────────────────────────────────────────
 let showFps = true;
 fpsEl.style.display = 'block';
 
@@ -97,6 +145,10 @@ window.addEventListener('keydown', e => {
   if (e.code === 'F3') {
     showFps = !showFps;
     fpsEl.style.display = showFps ? 'block' : 'none';
+    e.preventDefault();
+  }
+  if (e.code === 'F4') {
+    toggleDebugPanel();
     e.preventDefault();
   }
   if (e.code === 'KeyK') {
@@ -175,20 +227,17 @@ renderer.renderer.setAnimationLoop((now: number) => {
     input.flushMouse();
   }
 
-  // Clear single-frame triggers
   input.clearFrame();
 
   // ── Update Viewmodel Rig & Flashlight ────────────────────────────────────
   const isMoving = input.isDown('KeyW') || input.isDown('KeyS') || input.isDown('KeyA') || input.isDown('KeyD');
   viewmodel.update(time.delta, flashlight.battery, mouseDelta, isMoving, time.elapsed * 8);
-
-  // Update flashlight (completely decoupled from gun recoil)
   flashlight.update(time.delta);
 
   // Crosshair visibility
   crosshairEl.style.opacity = viewmodel.isAiming || viewmodel.currentSlot !== 1 ? '0' : '0.45';
 
-  // ── Update Slot & HUD Prompts ───────────────────────────────────────────
+  // HUD Slot display
   if (viewmodel.currentSlot === 1) {
     slotDisplayEl.textContent = '[1] RIFLE';
     slotDisplayEl.style.color = '#38e078';
@@ -248,13 +297,16 @@ renderer.renderer.setAnimationLoop((now: number) => {
   if (showFps) {
     fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'} | ${renderer.quality.toUpperCase()}`;
   }
+  if (debugOpen) {
+    dbgFpsLive.textContent = `${time.fps} FPS`;
+  }
 
   // ── Render Passes ────────────────────────────────────────────────────────
-  // Pass 1: Render main world scene
   renderer.renderer.clear();
   renderer.renderer.render(scene, player.camera);
 
-  // Pass 2: Clear depth buffer and render viewmodel rig (never clips into trees/walls)
-  renderer.renderer.clearDepth();
-  renderer.renderer.render(viewmodelScene, viewmodel.camera);
+  if (renderViewmodelPass) {
+    renderer.renderer.clearDepth();
+    renderer.renderer.render(viewmodelScene, viewmodel.camera);
+  }
 });
