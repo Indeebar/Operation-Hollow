@@ -24,7 +24,7 @@ export class Weapon {
 
   // Fire / Reload timing
   private fireCooldown: number = 0;
-  private fireRate: number = 0.14; // ~7 rounds per second (semi-auto / rapid single)
+  private fireRate: number = 0.14;
   isReloading: boolean = false;
   private reloadTime: number = 1.8;
   private reloadTimer: number = 0;
@@ -34,27 +34,23 @@ export class Weapon {
   private adsWeight: number = 0; // 0 (hip) to 1 (ADS)
 
   // Positions in camera local space
-  // Hipfire position: lower-right of the screen
-  private hipPos: Vector3 = new Vector3(0.18, -0.16, -0.32);
-  private hipRot: Vector3 = new Vector3(0.04, -0.06, 0.0);
+  // Hipfire position: right +0.19m, down -0.17m, forward -0.32m
+  private hipPos: Vector3 = new Vector3(0.19, -0.17, -0.32);
+  private hipRot: Vector3 = new Vector3(-0.02, 0.05, -0.04);
 
-  // ADS position: aligned with center view, raised to eye level
-  private adsPos: Vector3 = new Vector3(0.0, -0.105, -0.22);
+  // ADS position: aligned with center crosshair, raised to eye level
+  private adsPos: Vector3 = new Vector3(0.0, -0.108, -0.22);
   private adsRot: Vector3 = new Vector3(0.0, 0.0, 0.0);
 
-  // Recoil & kick offsets
-  private recoilPos: Vector3 = new Vector3();
-  private recoilRot: Vector3 = new Vector3();
+  // Recoil kick offsets
   private recoilKick: number = 0;
-
-  // Muzzle flash timer
   private muzzleFlashTimer: number = 0;
 
   constructor() {
     this.group = new Group();
 
-    // ── Build Tactical Rifle from Primitives ────────────────────────────
-    // Gun receiver / body: dark matte gunmetal steel
+    // ── Build Tactical Rifle with Realistic Dark Materials ──────────────
+    // Dark matte gunmetal steel (no bright white/untextured parts)
     const gunMat = new MeshStandardMaterial({
       color: new Color(0x1a1e22),
       roughness: 0.55,
@@ -63,72 +59,84 @@ export class Weapon {
 
     const polymerMat = new MeshStandardMaterial({
       color: new Color(0x101316),
-      roughness: 0.85,
-      metalness: 0.1,
+      roughness: 0.88,
+      metalness: 0.08,
     });
 
-    // 1. Receiver
-    const receiverGeo = new BoxGeometry(0.04, 0.065, 0.28);
+    const darkAccentMat = new MeshStandardMaterial({
+      color: new Color(0x121518),
+      roughness: 0.65,
+      metalness: 0.7,
+    });
+
+    // 1. Receiver body
+    const receiverGeo = new BoxGeometry(0.036, 0.06, 0.26);
     const receiver = new Mesh(receiverGeo, gunMat);
-    receiver.position.set(0, 0, 0);
     this.group.add(receiver);
 
     // 2. Barrel
-    const barrelGeo = new CylinderGeometry(0.012, 0.014, 0.22, 8);
+    const barrelGeo = new CylinderGeometry(0.010, 0.012, 0.24, 8);
     barrelGeo.rotateX(Math.PI / 2);
-    barrelGeo.translate(0, 0.015, -0.22);
+    barrelGeo.translate(0, 0.012, -0.23);
     const barrel = new Mesh(barrelGeo, gunMat);
     this.group.add(barrel);
 
-    // 3. Handguard / Shroud
-    const handguardGeo = new BoxGeometry(0.036, 0.045, 0.16);
-    handguardGeo.translate(0, 0.01, -0.18);
+    // 3. Handguard shroud
+    const handguardGeo = new BoxGeometry(0.034, 0.042, 0.16);
+    handguardGeo.translate(0, 0.008, -0.17);
     const handguard = new Mesh(handguardGeo, polymerMat);
     this.group.add(handguard);
 
     // 4. Stock
-    const stockGeo = new BoxGeometry(0.034, 0.075, 0.15);
-    stockGeo.translate(0, -0.015, 0.19);
+    const stockGeo = new BoxGeometry(0.030, 0.07, 0.14);
+    stockGeo.translate(0, -0.015, 0.18);
     const stock = new Mesh(stockGeo, polymerMat);
     this.group.add(stock);
 
-    // 5. Magazine
-    const magGeo = new BoxGeometry(0.026, 0.12, 0.06);
-    magGeo.translate(0, -0.075, -0.02);
-    const mag = new Mesh(magGeo, polymerMat);
+    // 5. Magazine (dark curved block pointing down/forward)
+    const magGeo = new BoxGeometry(0.024, 0.11, 0.055);
+    magGeo.rotateX(0.12);
+    magGeo.translate(0, -0.075, -0.03);
+    const mag = new Mesh(magGeo, darkAccentMat);
     this.group.add(mag);
 
     // 6. Pistol Grip
-    const gripGeo = new BoxGeometry(0.028, 0.09, 0.04);
-    gripGeo.rotateX(0.35);
-    gripGeo.translate(0, -0.065, 0.08);
+    const gripGeo = new BoxGeometry(0.026, 0.085, 0.038);
+    gripGeo.rotateX(0.38);
+    gripGeo.translate(0, -0.062, 0.075);
     const grip = new Mesh(gripGeo, polymerMat);
     this.group.add(grip);
 
-    // 7. Iron Sights (front and rear posts)
-    const rearSightGeo = new BoxGeometry(0.016, 0.02, 0.01);
-    rearSightGeo.translate(0, 0.042, 0.06);
-    const rearSight = new Mesh(rearSightGeo, gunMat);
+    // 7. Tactical Top Rail
+    const railGeo = new BoxGeometry(0.020, 0.010, 0.22);
+    railGeo.translate(0, 0.035, -0.02);
+    const rail = new Mesh(railGeo, darkAccentMat);
+    this.group.add(rail);
+
+    // 8. Iron Sights (Dark finish, matching weapon body)
+    const rearSightGeo = new BoxGeometry(0.014, 0.018, 0.008);
+    rearSightGeo.translate(0, 0.046, 0.06);
+    const rearSight = new Mesh(rearSightGeo, darkAccentMat);
     this.group.add(rearSight);
 
-    const frontSightGeo = new BoxGeometry(0.008, 0.025, 0.008);
-    frontSightGeo.translate(0, 0.038, -0.3);
-    const frontSight = new Mesh(frontSightGeo, gunMat);
+    const frontSightGeo = new BoxGeometry(0.006, 0.022, 0.006);
+    frontSightGeo.translate(0, 0.036, -0.31);
+    const frontSight = new Mesh(frontSightGeo, darkAccentMat);
     this.group.add(frontSight);
 
     // ── Muzzle Flash Light & Mesh ───────────────────────────────────────
-    this.muzzleFlashLight = new PointLight(0xffcc66, 0, 14);
-    this.muzzleFlashLight.position.set(0, 0.015, -0.34);
+    this.muzzleFlashLight = new PointLight(0xffb732, 0, 12);
+    this.muzzleFlashLight.position.set(0, 0.012, -0.36);
     this.group.add(this.muzzleFlashLight);
 
-    const flashGeo = new CylinderGeometry(0.01, 0.06, 0.08, 6);
+    const flashGeo = new CylinderGeometry(0.005, 0.045, 0.06, 6);
     flashGeo.rotateX(Math.PI / 2);
-    flashGeo.translate(0, 0.015, -0.36);
+    flashGeo.translate(0, 0.012, -0.37);
     const flashMat = new MeshStandardMaterial({
       color: 0xffea88,
-      emissive: 0xffb732,
-      emissiveIntensity: 6.0,
-      roughness: 0.1,
+      emissive: 0xffa020,
+      emissiveIntensity: 5.0,
+      roughness: 0.2,
     });
     this.muzzleFlashMesh = new Mesh(flashGeo, flashMat);
     this.muzzleFlashMesh.visible = false;
@@ -143,17 +151,15 @@ export class Weapon {
     if (this.fireCooldown > 0 || this.isReloading) return false;
 
     if (this.ammoInMag <= 0) {
-      // Empty click
       return false;
     }
 
-    // Fire round!
     this.ammoInMag--;
     this.fireCooldown = this.fireRate;
 
-    // Recoil kick: backwards and muzzle rises up
+    // Recoil kick
     this.recoilKick = 1.0;
-    this.muzzleFlashTimer = 0.045; // flash visible for ~45ms
+    this.muzzleFlashTimer = 0.04;
 
     return true;
   }
@@ -171,23 +177,20 @@ export class Weapon {
   }
 
   update(dt: number, camera: PerspectiveCamera): void {
-    // ── Cooldowns & Timers ──────────────────────────────────────────────
     if (this.fireCooldown > 0) {
       this.fireCooldown -= dt;
     }
 
     if (this.muzzleFlashTimer > 0) {
       this.muzzleFlashTimer -= dt;
-      this.muzzleFlashLight.intensity = 18.0;
+      this.muzzleFlashLight.intensity = 15.0;
       this.muzzleFlashMesh.visible = true;
-      // Slight random rotation for varied flash silhouette
       this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
     } else {
       this.muzzleFlashLight.intensity = 0;
       this.muzzleFlashMesh.visible = false;
     }
 
-    // ── Reload Logic ────────────────────────────────────────────────────
     if (this.isReloading) {
       this.reloadTimer -= dt;
       if (this.reloadTimer <= 0) {
@@ -199,37 +202,34 @@ export class Weapon {
       }
     }
 
-    // ── ADS Transition (Hip to Sights) ──────────────────────────────────
+    // Smooth ADS transition
     const targetAds = this.isAiming && !this.isReloading ? 1.0 : 0.0;
     this.adsWeight = MathUtils.lerp(this.adsWeight, targetAds, dt * 14.0);
 
-    // Zoom camera FOV when ADS (75 down to ~58)
     const targetFov = MathUtils.lerp(75, 56, this.adsWeight);
     if (Math.abs(camera.fov - targetFov) > 0.05) {
       camera.fov = targetFov;
       camera.updateProjectionMatrix();
     }
 
-    // Base position interpolated between hip and ADS
     const currentTargetPos = new Vector3().lerpVectors(this.hipPos, this.adsPos, this.adsWeight);
     const currentTargetRot = new Vector3().lerpVectors(this.hipRot, this.adsRot, this.adsWeight);
 
-    // ── Recoil Recovery ─────────────────────────────────────────────────
+    // Recoil recovery
     this.recoilKick = MathUtils.lerp(this.recoilKick, 0.0, dt * 18.0);
-    const kickZ = this.recoilKick * 0.045; // kick backwards
-    const kickY = this.recoilKick * 0.015; // muzzle rise
-    const kickPitch = this.recoilKick * 0.12;
+    const kickZ = this.recoilKick * 0.04;
+    const kickY = this.recoilKick * 0.012;
+    const kickPitch = this.recoilKick * 0.1;
 
     // Reload animation dip
     let reloadY = 0;
     let reloadRotX = 0;
     if (this.isReloading) {
       const reloadPhase = (this.reloadTime - this.reloadTimer) / this.reloadTime;
-      reloadY = -Math.sin(reloadPhase * Math.PI) * 0.08;
-      reloadRotX = -Math.sin(reloadPhase * Math.PI) * 0.25;
+      reloadY = -Math.sin(reloadPhase * Math.PI) * 0.07;
+      reloadRotX = -Math.sin(reloadPhase * Math.PI) * 0.22;
     }
 
-    // Apply combined transforms to weapon group
     this.group.position.set(
       currentTargetPos.x,
       currentTargetPos.y + kickY + reloadY,

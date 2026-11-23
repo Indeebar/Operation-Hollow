@@ -23,21 +23,20 @@ export class Sky {
 
   constructor(scene: Scene) {
     // ── Deep Horror Night Lighting ─────────────────────────────────────────
-    // Section 1: "near-total darkness. The flashlight is your main way of seeing."
-    // Heavily dimmed ambient: very low moonlight bounce
-    this.ambient = new HemisphereLight(0x050e14, 0x010202, 0.05);
+    // Pitch darkness without the flashlight
+    this.ambient = new HemisphereLight(0x02070a, 0x000101, 0.015);
     scene.add(this.ambient);
 
-    // ── Moon directional light: low dim moonlight (~0.12) ──────────────────
-    // Just enough to pick out distant tree silhouettes against the horizon
-    this.moon = new DirectionalLight(0x759cb5, 0.12);
+    // ── Moon directional light: faint cold moonlight (~0.04) ───────────────
+    // Faint specular sheen on wet terrain, trees remain dark silhouettes
+    this.moon = new DirectionalLight(0x5c7f99, 0.04);
     this.moon.position.set(-20, 115, -200);
     this.moon.castShadow = false;
     scene.add(this.moon);
 
-    // ── Sky Dome with Vertical Gradient (Deep Night) ───────────────────────
-    // Top pitch-black blue (~#010408: [0.005, 0.015, 0.03])
-    // Horizon deep dark teal (~#071214: [0.028, 0.07, 0.078])
+    // ── Sky Dome with Vertical Gradient (Deep Horror Night) ─────────────────
+    // Top pitch-black (~#000204: [0.001, 0.005, 0.01])
+    // Horizon deep murky night teal (~#03090a: [0.012, 0.035, 0.04])
     const domeGeo = new SphereGeometry(450, 24, 16);
     const pos = domeGeo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
@@ -50,15 +49,15 @@ export class Sky {
       if (normalizedY >= 0) {
         // Horizon (0) to Zenith (1)
         const t = Math.pow(normalizedY, 0.7);
-        r = (1 - t) * 0.028 + t * 0.005;
-        g = (1 - t) * 0.07 + t * 0.015;
-        b = (1 - t) * 0.078 + t * 0.03;
+        r = (1 - t) * 0.012 + t * 0.001;
+        g = (1 - t) * 0.035 + t * 0.005;
+        b = (1 - t) * 0.04 + t * 0.01;
       } else {
-        // Below horizon into black void
+        // Below horizon into pitch black
         const t = Math.min(1, -normalizedY * 3);
-        r = (1 - t) * 0.028 + t * 0.002;
-        g = (1 - t) * 0.07 + t * 0.005;
-        b = (1 - t) * 0.078 + t * 0.008;
+        r = (1 - t) * 0.012;
+        g = (1 - t) * 0.035;
+        b = (1 - t) * 0.04;
       }
 
       colors[i * 3] = r;
@@ -101,7 +100,7 @@ export class Sky {
       fog: false,
       depthWrite: false,
     });
-    const moonGeo = new PlaneGeometry(22, 22);
+    const moonGeo = new PlaneGeometry(20, 20);
     this.moonDisc = new Mesh(moonGeo, moonMat);
     this.moonDisc.position.set(-25, 185, -330);
     this.moonDisc.lookAt(0, 0, 0);
@@ -114,10 +113,10 @@ export class Sky {
     haloCanvas.height = 256;
     const hctx = haloCanvas.getContext('2d')!;
     const grad = hctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(195, 218, 232, 0.85)');
-    grad.addColorStop(0.15, 'rgba(140, 185, 205, 0.45)');
-    grad.addColorStop(0.4, 'rgba(60, 120, 140, 0.12)');
-    grad.addColorStop(0.7, 'rgba(15, 45, 55, 0.03)');
+    grad.addColorStop(0, 'rgba(180, 210, 225, 0.75)');
+    grad.addColorStop(0.15, 'rgba(110, 165, 185, 0.35)');
+    grad.addColorStop(0.4, 'rgba(40, 90, 110, 0.08)');
+    grad.addColorStop(0.7, 'rgba(10, 30, 40, 0.02)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     hctx.fillStyle = grad;
     hctx.fillRect(0, 0, 256, 256);
@@ -131,9 +130,9 @@ export class Sky {
       blending: AdditiveBlending,
       fog: false,
       depthWrite: false,
-      opacity: 0.8,
+      opacity: 0.65,
     });
-    const innerHaloGeo = new PlaneGeometry(85, 85);
+    const innerHaloGeo = new PlaneGeometry(80, 80);
     this.moonHalo = new Mesh(innerHaloGeo, innerHaloMat);
     this.moonHalo.position.set(-25, 185, -326);
     this.moonHalo.lookAt(0, 0, 0);
@@ -147,9 +146,9 @@ export class Sky {
       blending: AdditiveBlending,
       fog: false,
       depthWrite: false,
-      opacity: 0.3,
+      opacity: 0.22,
     });
-    const outerHaloGeo = new PlaneGeometry(200, 200);
+    const outerHaloGeo = new PlaneGeometry(180, 180);
     this.moonOuterHalo = new Mesh(outerHaloGeo, outerHaloMat);
     this.moonOuterHalo.position.set(-25, 185, -325);
     this.moonOuterHalo.lookAt(0, 0, 0);

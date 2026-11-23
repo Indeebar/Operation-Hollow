@@ -36,8 +36,9 @@ const input = new Input(canvas);
 const game = new Game();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
-scene.fog = new FogExp2(0x071214, 0.0165);
-scene.background = new Color(0x071214);
+// Deep dark night fog matching horizon: #03090a
+scene.fog = new FogExp2(0x03090a, 0.017);
+scene.background = new Color(0x03090a);
 
 // ── Terrain ───────────────────────────────────────────────────────────────────
 const terrain = new Terrain();
@@ -62,15 +63,19 @@ const player = new PlayerController(input, terrain);
 scene.add(player.getObject());
 player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
 
-// ── Flashlight (Milestone M4) ─────────────────────────────────────────────────
+// ── Flashlight ────────────────────────────────────────────────────────────────
 const flashlight = new Flashlight(player.camera, scene);
 
-// ── Weapon & Radio HUD (Milestone M5) ─────────────────────────────────────────
+// ── Weapon & Radio HUD ────────────────────────────────────────────────────────
 const weapon = new Weapon();
 player.camera.add(weapon.group);
 
 const radio = new Radio();
 player.camera.add(radio.group);
+
+// Dedicated key state tracking for separate swap and reload
+let rKeyHeldDuration = 0;
+let rKeyTriggeredHold = false;
 
 // ── F3 FPS toggle ─────────────────────────────────────────────────────────────
 let showFps = true;
@@ -115,13 +120,20 @@ renderer.renderer.setAnimationLoop((now: number) => {
       flashlight.toggle();
     }
 
-    // Reload weapon: [R] (tap). If ammo is full, swap flashlight battery
-    if (input.isJustPressed('KeyR')) {
-      if (weapon.ammoInMag < weapon.magCapacity && weapon.reserveAmmo > 0) {
-        weapon.startReload();
-      } else {
+    // Weapon Reload (tap R) vs Battery Swap (hold R > 0.45s)
+    if (input.isDown('KeyR')) {
+      rKeyHeldDuration += time.delta;
+      if (rKeyHeldDuration >= 0.45 && !rKeyTriggeredHold) {
+        rKeyTriggeredHold = true;
         flashlight.startBatterySwap();
       }
+    } else {
+      // Key released
+      if (rKeyHeldDuration > 0 && rKeyHeldDuration < 0.45 && !rKeyTriggeredHold) {
+        weapon.startReload();
+      }
+      rKeyHeldDuration = 0;
+      rKeyTriggeredHold = false;
     }
 
     // Fire weapon: [LMB]
@@ -146,7 +158,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
   // Crosshair visibility fades out when aiming down sights
   crosshairEl.style.opacity = weapon.isAiming ? '0' : '0.45';
 
-  // Update Weapon HUD
+  // Update HUD status & prompts
   ammoDisplayEl.textContent = `${weapon.ammoInMag} / ${weapon.reserveAmmo}`;
   if (weapon.isReloading) {
     promptMsgEl.textContent = 'Reloading weapon...';
@@ -158,7 +170,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
     promptMsgEl.style.display = 'none';
   }
 
-  // Update Flashlight HUD
+  // Update Flashlight Battery Status
   const pct = Math.round(flashlight.battery);
   batteryPctEl.textContent = `${pct}%`;
   batteryFillEl.style.width = `${pct}%`;
