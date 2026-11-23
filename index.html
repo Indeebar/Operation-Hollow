@@ -12,9 +12,14 @@
     <div id="hud">
       <div id="crosshair">+</div>
       <div id="fps-counter">FPS: 0</div>
+      <div id="quality-toggle" title="Click or press [K] to cycle Low / Medium / High">QUALITY: MED</div>
 
       <!-- Tactical Status HUD -->
       <div id="status-hud">
+        <div id="slot-status">
+          <span class="hud-label">SLOT:</span>
+          <span id="slot-display">[1] RIFLE</span>
+        </div>
         <div id="flashlight-status">
           <span class="hud-label">LIGHT:</span>
           <span id="light-state">ON</span>
@@ -25,14 +30,14 @@
           <span id="battery-count">(x3)</span>
         </div>
         <div id="weapon-status">
-          <span class="hud-label">RIFLE:</span>
+          <span class="hud-label">AMMO:</span>
           <span id="ammo-display">20 / 40</span>
         </div>
       </div>
 
       <!-- Instruction / Hint bar -->
       <div id="info-bar">
-        [LMB] Fire | [RMB] Aim Sights | [R] Reload Gun (tap) / Battery (hold F) | [F] Flashlight
+        [1-3 / Wheel] Weapon Slot | [LMB] Fire | [RMB] Aim | [R] Reload Gun / Swap Batt | [F] Torch | [K] Quality
       </div>
       <div id="prompt-msg" style="display:none"></div>
     </div>

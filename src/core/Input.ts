@@ -5,6 +5,7 @@ export class Input {
   private justPressedMouseButtons: Set<number> = new Set();
   private mouseMovX: number = 0;
   private mouseMovY: number = 0;
+  wheelDeltaY: number = 0;
   pointerLocked: boolean = false;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -35,6 +36,12 @@ export class Input {
 
     window.addEventListener('contextmenu', e => {
       if (this.pointerLocked) e.preventDefault();
+    });
+
+    window.addEventListener('wheel', e => {
+      if (this.pointerLocked) {
+        this.wheelDeltaY += e.deltaY;
+      }
     });
 
     document.addEventListener('mousemove', e => {
@@ -72,6 +79,7 @@ export class Input {
   clearFrame(): void {
     this.justPressedKeys.clear();
     this.justPressedMouseButtons.clear();
+    this.wheelDeltaY = 0;
   }
 
   flushMouse(): { x: number; y: number } {

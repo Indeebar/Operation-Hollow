@@ -1,15 +1,17 @@
 import { WebGPURenderer } from 'three/webgpu';
 
+export type QualityPreset = 'low' | 'medium' | 'high';
+
 export class Renderer {
   renderer: WebGPURenderer;
+  quality: QualityPreset = 'medium';
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new WebGPURenderer({
       canvas,
       antialias: true,
     });
-    // Cap pixel ratio to 1.5 to maintain high framerate (55+ FPS)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.applyQuality('medium');
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
 
@@ -22,6 +24,29 @@ export class Renderer {
         console.log('%c[Renderer] WebGL2 fallback active', 'color: #fa0');
       }
     });
+  }
+
+  applyQuality(preset: QualityPreset): void {
+    this.quality = preset;
+    let pixelRatioCap = 1.25;
+
+    if (preset === 'low') {
+      pixelRatioCap = 1.0;
+    } else if (preset === 'medium') {
+      pixelRatioCap = 1.25;
+    } else if (preset === 'high') {
+      pixelRatioCap = 1.5;
+    }
+
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioCap));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  toggleQuality(): QualityPreset {
+    if (this.quality === 'low') this.applyQuality('medium');
+    else if (this.quality === 'medium') this.applyQuality('high');
+    else this.applyQuality('low');
+    return this.quality;
   }
 
   resize(): void {

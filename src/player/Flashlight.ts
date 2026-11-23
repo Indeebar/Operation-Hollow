@@ -12,9 +12,8 @@ import {
   AdditiveBlending,
 } from 'three/webgpu';
 
-// Battery config: ~4 minutes (240s) runtime per battery from 100% to 0%
-const BATTERY_DRAIN_RATE = 100 / 240; // ~0.416 % per sec
-const SWAP_TIME = 1.5; // seconds to swap battery
+const BATTERY_DRAIN_RATE = 100 / 240; // ~4 minutes per battery
+const SWAP_TIME = 1.5;
 
 export class Flashlight {
   spotLight: SpotLight;
@@ -24,12 +23,12 @@ export class Flashlight {
 
   // State
   isOn: boolean = true;
-  battery: number = 100; // 0 to 100%
-  spareBatteries: number = 3; // reserve batteries
+  battery: number = 100;
+  spareBatteries: number = 3;
   isSwapping: boolean = false;
   swapTimer: number = 0;
 
-  // Smoothing / lag
+  // Smoothed rotation lag (slerp ~0.1 per frame, completely decoupled from weapon recoil/sway)
   private currentPos: Vector3 = new Vector3();
   private currentQuat: Quaternion = new Quaternion();
   private targetPos: Vector3 = new Vector3();
@@ -40,17 +39,17 @@ export class Flashlight {
   private flickerIntensityFactor: number = 1.0;
 
   // Base intensity: clear bright spot on the ground and trees
-  private baseIntensity: number = 75.0;
+  private baseIntensity: number = 70.0;
 
   constructor(private camera: PerspectiveCamera, scene: Object3D) {
     // ── SpotLight ──────────────────────────────────────────────────────────
-    // Distance 32m, cone angle 0.44 rad (~25°), soft penumbra 0.7, decay 1.3
-    // Cool crisp torchlight (#e4f2fb)
-    this.spotLight = new SpotLight(0xe4f2fb, this.baseIntensity, 32, 0.44, 0.7, 1.3);
+    // Distance ~35m, cone angle ~0.5 rad (~28.6°), soft penumbra ~0.7, decay 1.2
+    // Crisp pale cool torch tint (#e6f4fc)
+    this.spotLight = new SpotLight(0xe6f4fc, this.baseIntensity, 35, 0.5, 0.7, 1.2);
     this.spotLight.castShadow = true;
     this.spotLight.shadow.mapSize.set(1024, 1024);
     this.spotLight.shadow.camera.near = 0.2;
-    this.spotLight.shadow.camera.far = 32;
+    this.spotLight.shadow.camera.far = 35;
     this.spotLight.shadow.bias = -0.001;
 
     this.lightTarget = new Object3D();
@@ -58,14 +57,12 @@ export class Flashlight {
     this.spotLight.target = this.lightTarget;
     scene.add(this.spotLight);
 
-    // ── Subtle Atmospheric Dust Motes in Beam ─────────────────────────────
-    // Removed the hard volumetric cone mesh completely. Atmospheric beam dust particles
-    // provide the organic sense of light scattering without rendering any hard cylinder/cone edges.
-    const particleCount = 140;
+    // ── Atmospheric Dust Motes in Beam ─────────────────────────────────────
+    const particleCount = 120;
     this.dustPositions = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
       const z = -1 - Math.random() * 22;
-      const spread = Math.tan(0.22) * Math.abs(z);
+      const spread = Math.tan(0.24) * Math.abs(z);
       this.dustPositions[i * 3] = (Math.random() - 0.5) * spread * 1.5;
       this.dustPositions[i * 3 + 1] = (Math.random() - 0.5) * spread * 1.5;
       this.dustPositions[i * 3 + 2] = z;
@@ -76,25 +73,23 @@ export class Flashlight {
 
     const dustMat = new PointsMaterial({
       color: 0xc4e5f5,
-      size: 0.055,
+      size: 0.05,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.35,
       blending: AdditiveBlending,
       depthWrite: false,
     });
     this.dustParticles = new Points(dustGeo, dustMat);
     scene.add(this.dustParticles);
 
-    // Initial position sync
+    // Initial position
     this.camera.getWorldPosition(this.currentPos);
     this.camera.getWorldQuaternion(this.currentQuat);
   }
 
   toggle(): void {
     if (this.isSwapping) return;
-    if (this.battery <= 0 && !this.isOn) {
-      return;
-    }
+    if (this.battery <= 0 && !this.isOn) return;
     this.isOn = !this.isOn;
   }
 
@@ -105,7 +100,7 @@ export class Flashlight {
   }
 
   update(dt: number): void {
-    // ── Battery Swap Logic ────────────────────────────────────────────────
+    // Battery Swap
     if (this.isSwapping) {
       this.swapTimer -= dt;
       if (this.swapTimer <= 0) {
@@ -116,7 +111,7 @@ export class Flashlight {
       }
     }
 
-    // ── Battery Drain Logic ───────────────────────────────────────────────
+    // Battery Drain
     if (this.isOn && !this.isSwapping) {
       this.battery = Math.max(0, this.battery - BATTERY_DRAIN_RATE * dt);
       if (this.battery <= 0) {
@@ -124,7 +119,7 @@ export class Flashlight {
       }
     }
 
-    // ── Flicker Logic ─────────────────────────────────────────────────────
+    // Flicker
     if (this.isOn && this.battery < 25) {
       this.flickerTimer -= dt;
       if (this.flickerTimer <= 0) {
@@ -140,7 +135,6 @@ export class Flashlight {
       this.flickerIntensityFactor = 1.0;
     }
 
-    // Apply active intensity
     const effectiveIntensity =
       (this.isOn && !this.isSwapping ? this.baseIntensity * this.flickerIntensityFactor : 0) *
       (this.battery < 15 ? 0.4 + (this.battery / 15) * 0.6 : 1.0);
@@ -148,33 +142,32 @@ export class Flashlight {
     this.spotLight.intensity = effectiveIntensity;
     this.dustParticles.visible = effectiveIntensity > 1.0;
 
-    // ── Hand-Held Sway & Attachment ───────────────────────────────────────
+    // ── Smoothed Rotation Lag Parented Directly to Camera ─────────────────
+    // Decoupled from weapon: weapon recoil and sway do NOT affect the spotlight.
     this.camera.getWorldPosition(this.targetPos);
     this.camera.getWorldQuaternion(this.targetQuat);
 
-    // Offset in camera space: right +0.20m, down -0.15m, forward +0.16m
-    const offset = new Vector3(0.2, -0.15, 0.16).applyQuaternion(this.targetQuat);
+    // Subtle hand offset in camera space (+0.18m right, -0.14m down, +0.15m forward)
+    const offset = new Vector3(0.18, -0.14, 0.15).applyQuaternion(this.targetQuat);
     this.targetPos.add(offset);
 
-    // Smooth lag
-    const smoothFactor = Math.min(1.0, dt * 16.0);
-    this.currentPos.lerp(this.targetPos, smoothFactor);
+    // Smooth rotation lag using slerp (~0.1 per frame / dt*10)
+    const smoothFactor = Math.min(1.0, dt * 10.0);
+    this.currentPos.lerp(this.targetPos, smoothFactor * 1.5);
     this.currentQuat.slerp(this.targetQuat, smoothFactor);
 
-    // Direct spotlight positioning
     this.spotLight.position.copy(this.currentPos);
     const forward = new Vector3(0, 0, -1).applyQuaternion(this.currentQuat);
     this.lightTarget.position.copy(this.currentPos).addScaledVector(forward, 25);
     this.lightTarget.updateMatrixWorld();
 
-    // Align dust particles
     this.dustParticles.position.copy(this.currentPos);
     this.dustParticles.quaternion.copy(this.currentQuat);
 
-    // Dust particles drift
+    // Dust float
     const attr = this.dustParticles.geometry.attributes.position;
     for (let i = 0; i < attr.count; i++) {
-      let y = attr.getY(i) + dt * 0.1;
+      let y = attr.getY(i) + dt * 0.08;
       if (y > 3) y = -3;
       attr.setY(i, y);
     }

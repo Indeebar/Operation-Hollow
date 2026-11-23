@@ -23,13 +23,11 @@ function seededRand(seed: number): () => number {
   };
 }
 
-// Procedural alpha cutout texture for ferns/grass blades
 function createFernTexture(): CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
-
   ctx.clearRect(0, 0, 128, 128);
 
   const blades = [
@@ -81,25 +79,23 @@ interface TreeData {
 export class Forest {
   private meshes: Object3D[] = [];
 
-  // Instanced meshes
   private bottomConeMesh: InstancedMesh;
   private midConeMesh: InstancedMesh;
   private topConeMesh: InstancedMesh;
   private trunkMesh: InstancedMesh;
   private deadMesh: InstancedMesh;
 
-  // Stored original tree transformation data for fast distance-based culling
   private trees: TreeData[] = [];
   private deadTrees: TreeData[] = [];
 
   private dummy: Object3D = new Object3D();
   private lastCullPos: Vector3 = new Vector3(9999, 9999, 9999);
+  currentCullDist: number = 88;
 
-  constructor(terrain: Terrain, totalTreeCount = 2600) {
+  constructor(terrain: Terrain, totalTreeCount = 2200) {
     const rng = seededRand(42);
 
-    // ── Low vertex count geometries for optimal 60 FPS performance ───────
-    // Radial segments reduced to 5 for cones, 4 for trunks
+    // Highly optimized low-poly tree primitives (4-5 radial segments)
     const jitterGeo = (geo: ConeGeometry | CylinderGeometry, amount = 0.08) => {
       const pos = geo.attributes.position;
       const jrng = seededRand(1234);
@@ -113,7 +109,6 @@ export class Forest {
       geo.computeVertexNormals();
     };
 
-    // Tree height ~ 1.8 + 1.6 + 1.5 + 1.3 ≈ 6.2 m base height
     const bottomConeGeo = new ConeGeometry(1.3, 1.9, 5);
     bottomConeGeo.translate(0, 1.5, 0);
     jitterGeo(bottomConeGeo, 0.10);
@@ -144,7 +139,6 @@ export class Forest {
     this.topConeMesh.castShadow = true;
     this.topConeMesh.receiveShadow = true;
 
-    // Trunk
     const trunkGeo = new CylinderGeometry(0.12, 0.20, 1.3, 4);
     trunkGeo.translate(0, 0.65, 0);
     const trunkMat = new MeshStandardMaterial({
@@ -155,7 +149,6 @@ export class Forest {
     this.trunkMesh = new InstancedMesh(trunkGeo, trunkMat, totalTreeCount);
     this.trunkMesh.castShadow = true;
 
-    // Dead trees (~10%)
     const deadCount = Math.floor(totalTreeCount * 0.10);
     const deadGeo = new CylinderGeometry(0.06, 0.16, 5.0, 4);
     deadGeo.translate(0, 2.5, 0);
@@ -167,14 +160,12 @@ export class Forest {
     this.deadMesh = new InstancedMesh(deadGeo, deadMat, deadCount);
     this.deadMesh.castShadow = true;
 
-    // ── Generate Tree Positions ──────────────────────────────────────────
     for (let i = 0; i < totalTreeCount; i++) {
       let x = 0;
       let z = 0;
       let attempts = 0;
 
-      // Higher density within 60 m of the player, clear radius ~6 m at spawn
-      const forceNear = i < 1100;
+      const forceNear = i < 950;
       const maxRadius = forceNear ? 60 : 185;
 
       do {
@@ -195,13 +186,11 @@ export class Forest {
 
       const y = terrain.getHeight(x, z);
 
-      // Clamp tree scale so NO tree is bigger than ~12 m
-      // Base height is ~5.5m -> scale clamped between 0.75 and 1.8 (max height ~10m)
       const scale = 0.75 + rng() * 0.9;
-      const heightMult = Math.min(1.8 / scale, 0.85 + rng() * 0.35); // strictly clamps total height <= 11.5m
+      const heightMult = Math.min(1.8 / scale, 0.85 + rng() * 0.35);
 
       const rotY = rng() * Math.PI * 2;
-      const rotX = (rng() - 0.5) * 0.14; // natural lean
+      const rotX = (rng() - 0.5) * 0.14;
       const rotZ = (rng() - 0.5) * 0.14;
 
       const col = new Color();
@@ -220,7 +209,6 @@ export class Forest {
         color: col,
       });
 
-      // Dead trees
       if (this.deadTrees.length < deadCount && rng() < 0.13) {
         const dAngle = rng() * Math.PI * 2;
         const dRad = 6.5 + Math.sqrt(rng()) * (forceNear ? 60 : 180);
@@ -254,11 +242,10 @@ export class Forest {
       this.deadMesh,
     );
 
-    // Initial population
-    this.cullPast(0, 0, 95);
+    this.cullPast(0, 0, this.currentCullDist);
 
-    // ── Near-field clutter: Ferns/grass ──────────────────────────────────
-    const fernCount = 600;
+    // Ferns
+    const fernCount = 450;
     const fernTex = createFernTexture();
     const fernGeo = new PlaneGeometry(0.7, 0.7);
     fernGeo.translate(0, 0.35, 0);
@@ -276,7 +263,7 @@ export class Forest {
 
     const rng2 = seededRand(888);
     for (let i = 0; i < fernCount; i++) {
-      const rad = 2.2 + Math.sqrt(rng2()) * 60;
+      const rad = 2.2 + Math.sqrt(rng2()) * 55;
       const ang = rng2() * Math.PI * 2;
       const fx = Math.cos(ang) * rad;
       const fz = Math.sin(ang) * rad;
@@ -292,8 +279,8 @@ export class Forest {
     fernMesh.instanceMatrix.needsUpdate = true;
     this.meshes.push(fernMesh);
 
-    // ── Near-field clutter: Small rocks ──────────────────────────────────
-    const rockCount = 140;
+    // Rocks
+    const rockCount = 90;
     const rockGeo = new DodecahedronGeometry(0.28, 0);
     const rockMat = new MeshStandardMaterial({
       color: new Color(0x111315),
@@ -304,7 +291,7 @@ export class Forest {
 
     const rng3 = seededRand(555);
     for (let i = 0; i < rockCount; i++) {
-      const rad = 3.0 + Math.sqrt(rng3()) * 65;
+      const rad = 3.0 + Math.sqrt(rng3()) * 60;
       const ang = rng3() * Math.PI * 2;
       const rx = Math.cos(ang) * rad;
       const rz = Math.sin(ang) * rad;
@@ -320,8 +307,8 @@ export class Forest {
     rockMesh.instanceMatrix.needsUpdate = true;
     this.meshes.push(rockMesh);
 
-    // ── Near-field clutter: Fallen logs ──────────────────────────────────
-    const logCount = 40;
+    // Logs
+    const logCount = 30;
     const logGeo = new CylinderGeometry(0.13, 0.16, 3.8, 4);
     logGeo.rotateZ(Math.PI / 2);
     const logMat = new MeshStandardMaterial({
@@ -333,7 +320,7 @@ export class Forest {
 
     const rng4 = seededRand(333);
     for (let i = 0; i < logCount; i++) {
-      const rad = 6.0 + Math.sqrt(rng4()) * 70;
+      const rad = 6.0 + Math.sqrt(rng4()) * 65;
       const ang = rng4() * Math.PI * 2;
       const lx = Math.cos(ang) * rad;
       const lz = Math.sin(ang) * rad;
@@ -351,8 +338,14 @@ export class Forest {
     this.meshes.push(logMesh);
   }
 
-  // Distance-based culling past ~90-95m to maintain 55+ FPS
-  cullPast(playerX: number, playerZ: number, maxDist = 92): void {
+  setQuality(preset: 'low' | 'medium' | 'high'): void {
+    if (preset === 'low') this.currentCullDist = 70;
+    else if (preset === 'medium') this.currentCullDist = 88;
+    else this.currentCullDist = 105;
+    this.cullPast(this.lastCullPos.x, this.lastCullPos.z, this.currentCullDist);
+  }
+
+  cullPast(playerX: number, playerZ: number, maxDist = 88): void {
     const maxDistSq = maxDist * maxDist;
     let visibleCount = 0;
 
@@ -393,7 +386,6 @@ export class Forest {
     if (this.midConeMesh.instanceColor) this.midConeMesh.instanceColor.needsUpdate = true;
     if (this.topConeMesh.instanceColor) this.topConeMesh.instanceColor.needsUpdate = true;
 
-    // Dead trees culling
     let deadVisible = 0;
     for (let i = 0; i < this.deadTrees.length; i++) {
       const dt = this.deadTrees[i];
@@ -413,12 +405,11 @@ export class Forest {
   }
 
   update(playerX: number, playerZ: number): void {
-    // Only re-cull if player moved > 4m
     const dx = playerX - this.lastCullPos.x;
     const dz = playerZ - this.lastCullPos.z;
     if (dx * dx + dz * dz > 16) {
       this.lastCullPos.set(playerX, 0, playerZ);
-      this.cullPast(playerX, playerZ, 92);
+      this.cullPast(playerX, playerZ, this.currentCullDist);
     }
   }
 

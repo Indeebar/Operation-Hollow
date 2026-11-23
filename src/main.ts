@@ -11,16 +11,17 @@ import { Input } from './core/Input';
 import { Game } from './core/Game';
 import { PlayerController } from './player/PlayerController';
 import { Flashlight } from './player/Flashlight';
-import { Weapon } from './player/Weapon';
-import { Radio } from './player/Radio';
+import { ViewmodelRig } from './player/ViewmodelRig';
 import { Terrain } from './world/Terrain';
 import { Forest } from './world/Forest';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const fpsEl = document.getElementById('fps-counter') as HTMLDivElement;
+const qualityToggleEl = document.getElementById('quality-toggle') as HTMLDivElement;
 const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
 const infoEl = document.getElementById('info-bar') as HTMLDivElement;
+const slotDisplayEl = document.getElementById('slot-display') as HTMLSpanElement;
 const lightStateEl = document.getElementById('light-state') as HTMLSpanElement;
 const batteryFillEl = document.getElementById('battery-fill') as HTMLDivElement;
 const batteryPctEl = document.getElementById('battery-pct') as HTMLSpanElement;
@@ -30,13 +31,16 @@ const promptMsgEl = document.getElementById('prompt-msg') as HTMLDivElement;
 
 // ── Core systems ──────────────────────────────────────────────────────────────
 const renderer = new Renderer(canvas);
+renderer.renderer.autoClear = false; // Required for 2-pass viewmodel depth clearing!
+
 const scene = new Scene();
+const viewmodelScene = new Scene();
+
 const time = new Time();
 const input = new Input(canvas);
 const game = new Game();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
-// Deep dark night fog matching horizon: #03090a
 scene.fog = new FogExp2(0x03090a, 0.017);
 scene.background = new Color(0x03090a);
 
@@ -50,9 +54,9 @@ const sky = new Sky(scene);
 // ── Ground Mist ───────────────────────────────────────────────────────────────
 const groundMist = new GroundMist(scene);
 
-// ── Forest (optimized instanced trees with distance culling <= 92m) ───────────
+// ── Forest (culling <= 88m default) ───────────────────────────────────────────
 console.log('[Forest] Building instanced trees and forest clutter...');
-const forest = new Forest(terrain, 2600);
+const forest = new Forest(terrain, 2200);
 for (const mesh of forest.getMeshes()) {
   scene.add(mesh);
 }
@@ -63,21 +67,29 @@ const player = new PlayerController(input, terrain);
 scene.add(player.getObject());
 player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
 
-// ── Flashlight ────────────────────────────────────────────────────────────────
+// ── Flashlight (Decoupled from weapon, smoothed camera lag) ───────────────────
 const flashlight = new Flashlight(player.camera, scene);
 
-// ── Weapon & Radio HUD ────────────────────────────────────────────────────────
-const weapon = new Weapon();
-player.camera.add(weapon.group);
+// ── Viewmodel Rig (Weapon + Left Arm/Hand + Wrist Device) ─────────────────────
+// Attached to its own isolated viewmodelScene, rendered with autoClear=false + clearDepth()
+const viewmodel = new ViewmodelRig();
+viewmodelScene.add(viewmodel.group);
 
-const radio = new Radio();
-player.camera.add(radio.group);
-
-// Dedicated key state tracking for separate swap and reload
+// Dedicated input states
 let rKeyHeldDuration = 0;
 let rKeyTriggeredHold = false;
 
-// ── F3 FPS toggle ─────────────────────────────────────────────────────────────
+// ── Quality Toggle Functionality ──────────────────────────────────────────────
+function updateQualityUI(preset: string): void {
+  qualityToggleEl.textContent = `QUALITY: ${preset.toUpperCase()}`;
+  forest.setQuality(preset as 'low' | 'medium' | 'high');
+}
+qualityToggleEl.addEventListener('click', () => {
+  const newQ = renderer.toggleQuality();
+  updateQualityUI(newQ);
+});
+
+// ── F3 FPS toggle & Keyboard Shortcuts ────────────────────────────────────────
 let showFps = true;
 fpsEl.style.display = 'block';
 
@@ -86,6 +98,10 @@ window.addEventListener('keydown', e => {
     showFps = !showFps;
     fpsEl.style.display = showFps ? 'block' : 'none';
     e.preventDefault();
+  }
+  if (e.code === 'KeyK') {
+    const newQ = renderer.toggleQuality();
+    updateQualityUI(newQ);
   }
 });
 
@@ -99,6 +115,7 @@ document.addEventListener('pointerlockchange', () => {
 window.addEventListener('resize', () => {
   renderer.resize();
   player.onResize();
+  viewmodel.onResize();
 });
 
 // ── Game loop ─────────────────────────────────────────────────────────────────
@@ -111,16 +128,28 @@ renderer.renderer.setAnimationLoop((now: number) => {
     game.transition('PLAYING');
   }
 
-  // ── Input Handling (Movement, Flashlight, Weapon) ──
+  // ── Input Handling (Slots, Firing, Aiming, Movement) ──────────────────────
+  let mouseDelta = { x: 0, y: 0 };
+
   if (input.pointerLocked) {
     player.update(time.delta);
+    mouseDelta = input.flushMouse();
+
+    // Weapon slot selection: keys 1, 2, 3
+    if (input.isJustPressed('Digit1')) viewmodel.setSlot(1);
+    if (input.isJustPressed('Digit2')) viewmodel.setSlot(2);
+    if (input.isJustPressed('Digit3')) viewmodel.setSlot(3);
+
+    // Mouse wheel slot switching
+    if (input.wheelDeltaY > 0) viewmodel.nextSlot();
+    else if (input.wheelDeltaY < 0) viewmodel.prevSlot();
 
     // Toggle flashlight: [F]
     if (input.isJustPressed('KeyF')) {
       flashlight.toggle();
     }
 
-    // Weapon Reload (tap R) vs Battery Swap (hold R > 0.45s)
+    // Tap R for Gun Reload, Hold R (>= 0.45s) for Battery Swap
     if (input.isDown('KeyR')) {
       rKeyHeldDuration += time.delta;
       if (rKeyHeldDuration >= 0.45 && !rKeyTriggeredHold) {
@@ -128,9 +157,8 @@ renderer.renderer.setAnimationLoop((now: number) => {
         flashlight.startBatterySwap();
       }
     } else {
-      // Key released
       if (rKeyHeldDuration > 0 && rKeyHeldDuration < 0.45 && !rKeyTriggeredHold) {
-        weapon.startReload();
+        viewmodel.startReload();
       }
       rKeyHeldDuration = 0;
       rKeyTriggeredHold = false;
@@ -138,29 +166,43 @@ renderer.renderer.setAnimationLoop((now: number) => {
 
     // Fire weapon: [LMB]
     if (input.isMouseJustPressed(0)) {
-      weapon.tryFire();
+      viewmodel.tryFire();
     }
 
     // Aim down sights (ADS): [RMB]
-    weapon.setAiming(input.isMouseDown(2));
+    viewmodel.setAiming(input.isMouseDown(2));
+  } else {
+    input.flushMouse();
   }
 
-  // Clear single-frame key & mouse triggers
+  // Clear single-frame triggers
   input.clearFrame();
 
-  // Update weapon & radio models in view
-  weapon.update(time.delta, player.camera);
-  radio.update(time.delta, flashlight.battery, weapon.ammoInMag, weapon.reserveAmmo);
+  // ── Update Viewmodel Rig & Flashlight ────────────────────────────────────
+  const isMoving = input.isDown('KeyW') || input.isDown('KeyS') || input.isDown('KeyA') || input.isDown('KeyD');
+  viewmodel.update(time.delta, flashlight.battery, mouseDelta, isMoving, time.elapsed * 8);
 
-  // Update flashlight physics & battery
+  // Update flashlight (completely decoupled from gun recoil)
   flashlight.update(time.delta);
 
-  // Crosshair visibility fades out when aiming down sights
-  crosshairEl.style.opacity = weapon.isAiming ? '0' : '0.45';
+  // Crosshair visibility
+  crosshairEl.style.opacity = viewmodel.isAiming || viewmodel.currentSlot !== 1 ? '0' : '0.45';
 
-  // Update HUD status & prompts
-  ammoDisplayEl.textContent = `${weapon.ammoInMag} / ${weapon.reserveAmmo}`;
-  if (weapon.isReloading) {
+  // ── Update Slot & HUD Prompts ───────────────────────────────────────────
+  if (viewmodel.currentSlot === 1) {
+    slotDisplayEl.textContent = '[1] RIFLE';
+    slotDisplayEl.style.color = '#38e078';
+  } else if (viewmodel.currentSlot === 2) {
+    slotDisplayEl.textContent = '[2] TORCH ONLY';
+    slotDisplayEl.style.color = '#60a5fa';
+  } else {
+    slotDisplayEl.textContent = '[3] FLARE';
+    slotDisplayEl.style.color = '#f59e0b';
+  }
+
+  ammoDisplayEl.textContent = `${viewmodel.ammoInMag} / ${viewmodel.reserveAmmo}`;
+
+  if (viewmodel.isReloading) {
     promptMsgEl.textContent = 'Reloading weapon...';
     promptMsgEl.style.display = 'block';
   } else if (flashlight.isSwapping) {
@@ -170,7 +212,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
     promptMsgEl.style.display = 'none';
   }
 
-  // Update Flashlight Battery Status
+  // Flashlight battery bar
   const pct = Math.round(flashlight.battery);
   batteryPctEl.textContent = `${pct}%`;
   batteryFillEl.style.width = `${pct}%`;
@@ -197,15 +239,22 @@ renderer.renderer.setAnimationLoop((now: number) => {
   }
   batteryCountEl.textContent = `(x${flashlight.spareBatteries})`;
 
-  // Update sky dome, ground mist, and forest culling
+  // ── Update World ─────────────────────────────────────────────────────────
   const pp = player.getObject().position;
   sky.update(time.elapsed, pp.x, pp.y, pp.z);
   groundMist.update(time.elapsed, pp.x, pp.z);
   forest.update(pp.x, pp.z);
 
   if (showFps) {
-    fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'}`;
+    fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'} | ${renderer.quality.toUpperCase()}`;
   }
 
+  // ── Render Passes ────────────────────────────────────────────────────────
+  // Pass 1: Render main world scene
+  renderer.renderer.clear();
   renderer.renderer.render(scene, player.camera);
+
+  // Pass 2: Clear depth buffer and render viewmodel rig (never clips into trees/walls)
+  renderer.renderer.clearDepth();
+  renderer.renderer.render(viewmodelScene, viewmodel.camera);
 });
