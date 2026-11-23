@@ -22,23 +22,22 @@ export class Sky {
   ambient: HemisphereLight;
 
   constructor(scene: Scene) {
-    // ── Ambient lighting: much darker overall scene, moody horror tone ──
-    this.ambient = new HemisphereLight(0x0a161d, 0x020405, 0.22);
+    // ── Deep Horror Night Lighting ─────────────────────────────────────────
+    // Section 1: "near-total darkness. The flashlight is your main way of seeing."
+    // Heavily dimmed ambient: very low moonlight bounce
+    this.ambient = new HemisphereLight(0x050e14, 0x010202, 0.05);
     scene.add(this.ambient);
 
-    // ── Moon directional light ───────────────────────────────────────────
-    // Soft intensity 0.38, cold moonlight tint.
-    // Optimization: turn off moon castShadow (or keep it off) so flashlight is the single
-    // high-performance shadow caster, guaranteeing 55+ FPS.
-    this.moon = new DirectionalLight(0x9db8c7, 0.38);
+    // ── Moon directional light: low dim moonlight (~0.12) ──────────────────
+    // Just enough to pick out distant tree silhouettes against the horizon
+    this.moon = new DirectionalLight(0x759cb5, 0.12);
     this.moon.position.set(-20, 115, -200);
-    this.moon.castShadow = false; // Disabled shadow on moon to hit 55+ FPS target
+    this.moon.castShadow = false;
     scene.add(this.moon);
 
-    // ── Sky Dome with Vertical Gradient (Vertex Colors) ──────────────────
-    // Top near-black blue (~#04090d: [0.016, 0.035, 0.051])
-    // Horizon dark teal (~#0f1f22: [0.059, 0.122, 0.133])
-    // Low segment count (24, 16) for performance
+    // ── Sky Dome with Vertical Gradient (Deep Night) ───────────────────────
+    // Top pitch-black blue (~#010408: [0.005, 0.015, 0.03])
+    // Horizon deep dark teal (~#071214: [0.028, 0.07, 0.078])
     const domeGeo = new SphereGeometry(450, 24, 16);
     const pos = domeGeo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
@@ -51,15 +50,15 @@ export class Sky {
       if (normalizedY >= 0) {
         // Horizon (0) to Zenith (1)
         const t = Math.pow(normalizedY, 0.7);
-        r = (1 - t) * 0.059 + t * 0.016;
-        g = (1 - t) * 0.122 + t * 0.035;
-        b = (1 - t) * 0.133 + t * 0.051;
+        r = (1 - t) * 0.028 + t * 0.005;
+        g = (1 - t) * 0.07 + t * 0.015;
+        b = (1 - t) * 0.078 + t * 0.03;
       } else {
-        // Below horizon into dark earth/depth
+        // Below horizon into black void
         const t = Math.min(1, -normalizedY * 3);
-        r = (1 - t) * 0.059 + t * 0.005;
-        g = (1 - t) * 0.122 + t * 0.01;
-        b = (1 - t) * 0.133 + t * 0.015;
+        r = (1 - t) * 0.028 + t * 0.002;
+        g = (1 - t) * 0.07 + t * 0.005;
+        b = (1 - t) * 0.078 + t * 0.008;
       }
 
       colors[i * 3] = r;
@@ -79,20 +78,17 @@ export class Sky {
     scene.add(this.skyDome);
 
     // ── Moon Disc: Perfect circle facing viewer ──────────────────────────
-    // Using a high-resolution circle canvas texture on a billboard plane
-    // facing the camera/origin directly ensures it is ALWAYS a crisp, unskewed, perfect circle.
     const moonCanvas = document.createElement('canvas');
     moonCanvas.width = 128;
     moonCanvas.height = 128;
     const mctx = moonCanvas.getContext('2d')!;
     mctx.clearRect(0, 0, 128, 128);
 
-    // Crisp pale cold moon disc (#d6e5ef) with subtle lunar rim gradient
     const mgrad = mctx.createRadialGradient(64, 64, 0, 64, 64, 58);
-    mgrad.addColorStop(0, '#f2f8fc');
-    mgrad.addColorStop(0.85, '#d6e5ef');
-    mgrad.addColorStop(0.98, '#b8d2e2');
-    mgrad.addColorStop(1, 'rgba(184, 210, 226, 0)');
+    mgrad.addColorStop(0, '#eaf2f8');
+    mgrad.addColorStop(0.85, '#bfd7e6');
+    mgrad.addColorStop(0.98, '#9cbacb');
+    mgrad.addColorStop(1, 'rgba(156, 186, 203, 0)');
     mctx.fillStyle = mgrad;
     mctx.beginPath();
     mctx.arc(64, 64, 58, 0, Math.PI * 2);
@@ -105,24 +101,23 @@ export class Sky {
       fog: false,
       depthWrite: false,
     });
-    const moonGeo = new PlaneGeometry(24, 24);
+    const moonGeo = new PlaneGeometry(22, 22);
     this.moonDisc = new Mesh(moonGeo, moonMat);
-    // At distance ~380m, elevation ~30° along -Z
     this.moonDisc.position.set(-25, 185, -330);
-    this.moonDisc.lookAt(0, 0, 0); // Directly facing camera origin
+    this.moonDisc.lookAt(0, 0, 0);
     this.moonDisc.renderOrder = -90;
     scene.add(this.moonDisc);
 
-    // ── Moon Halos: softer, larger additive glows ─────────────────────────
+    // ── Moon Halos ────────────────────────────────────────────────────────
     const haloCanvas = document.createElement('canvas');
     haloCanvas.width = 256;
     haloCanvas.height = 256;
     const hctx = haloCanvas.getContext('2d')!;
     const grad = hctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(214, 229, 239, 0.95)');
-    grad.addColorStop(0.12, 'rgba(180, 215, 230, 0.65)');
-    grad.addColorStop(0.35, 'rgba(110, 175, 195, 0.22)');
-    grad.addColorStop(0.65, 'rgba(40, 95, 115, 0.06)');
+    grad.addColorStop(0, 'rgba(195, 218, 232, 0.85)');
+    grad.addColorStop(0.15, 'rgba(140, 185, 205, 0.45)');
+    grad.addColorStop(0.4, 'rgba(60, 120, 140, 0.12)');
+    grad.addColorStop(0.7, 'rgba(15, 45, 55, 0.03)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     hctx.fillStyle = grad;
     hctx.fillRect(0, 0, 256, 256);
@@ -136,9 +131,9 @@ export class Sky {
       blending: AdditiveBlending,
       fog: false,
       depthWrite: false,
-      opacity: 0.9,
+      opacity: 0.8,
     });
-    const innerHaloGeo = new PlaneGeometry(95, 95);
+    const innerHaloGeo = new PlaneGeometry(85, 85);
     this.moonHalo = new Mesh(innerHaloGeo, innerHaloMat);
     this.moonHalo.position.set(-25, 185, -326);
     this.moonHalo.lookAt(0, 0, 0);
@@ -152,9 +147,9 @@ export class Sky {
       blending: AdditiveBlending,
       fog: false,
       depthWrite: false,
-      opacity: 0.45,
+      opacity: 0.3,
     });
-    const outerHaloGeo = new PlaneGeometry(230, 230);
+    const outerHaloGeo = new PlaneGeometry(200, 200);
     this.moonOuterHalo = new Mesh(outerHaloGeo, outerHaloMat);
     this.moonOuterHalo.position.set(-25, 185, -325);
     this.moonOuterHalo.lookAt(0, 0, 0);

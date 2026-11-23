@@ -32,8 +32,10 @@ const input = new Input(canvas);
 const game = new Game();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
-scene.fog = new FogExp2(0x0f1f22, 0.0135);
-scene.background = new Color(0x0f1f22);
+// Deep near-total night fog matching the horizon: #071214
+// Slightly denser fog (0.0165) so without the torch you are enveloped in darkness
+scene.fog = new FogExp2(0x071214, 0.0165);
+scene.background = new Color(0x071214);
 
 // ── Terrain ───────────────────────────────────────────────────────────────────
 const terrain = new Terrain();
