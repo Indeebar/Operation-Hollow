@@ -7,7 +7,6 @@ import {
   HemisphereLight,
   Scene,
   BackSide,
-  BufferGeometry,
   Float32BufferAttribute,
   AdditiveBlending,
   PlaneGeometry,
@@ -17,20 +16,19 @@ import {
 export class Sky {
   moon: DirectionalLight;
   moonDisc: Mesh;
-  moonGlow: Mesh;
+  moonHalo: Mesh;
+  moonOuterHalo: Mesh;
   skyDome: Mesh;
   ambient: HemisphereLight;
 
   constructor(scene: Scene) {
-    // ── Hemisphere ambient (cool night blue sky, near-black ground) ───────
-    // It should look moonlit, not unlit
-    this.ambient = new HemisphereLight(0x224455, 0x050a0a, 0.6);
+    // ── Ambient lighting: much darker overall scene, moody horror tone ──
+    this.ambient = new HemisphereLight(0x0a161d, 0x020405, 0.22);
     scene.add(this.ambient);
 
-    // ── Moon directional light ───────────────────────────────────────────
-    // Initial camera look direction is (0, 0, -1).
-    // Moon positioned at ~30° elevation in front of the player (e.g. z = -200, y = 115, x = -20)
-    this.moon = new DirectionalLight(0xbcd6e8, 1.3);
+    // ── Moon directional light: subtle shadows, not harsh ───────────────
+    // Soft intensity 0.42, cold moonlight tint
+    this.moon = new DirectionalLight(0x9db8c7, 0.42);
     this.moon.position.set(-20, 115, -200);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(2048, 2048);
@@ -44,31 +42,30 @@ export class Sky {
     scene.add(this.moon);
 
     // ── Sky Dome with Vertical Gradient (Vertex Colors) ──────────────────
-    // near-black blue at top (~#030914), lighter muted teal (~#1f3a3d) near horizon
-    const domeGeo = new SphereGeometry(450, 32, 16);
+    // Top near-black blue (~#04090d: [0.016, 0.035, 0.051])
+    // Horizon dark teal (~#0f1f22: [0.059, 0.122, 0.133])
+    // Perfectly matching horizon fog color
+    const domeGeo = new SphereGeometry(450, 32, 24);
     const pos = domeGeo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
-    // Top color: near-black blue [0.015, 0.04, 0.09]
-    // Horizon color: muted teal [0.12, 0.23, 0.24] (~#1f3a3d)
-    // Bottom color: deep void [0.01, 0.02, 0.03]
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i);
       const normalizedY = y / 450; // -1 to 1
 
       let r: number, g: number, b: number;
       if (normalizedY >= 0) {
-        // Horizon (0) to Top (1)
-        const t = Math.pow(normalizedY, 0.6); // smooth gradient curve
-        r = (1 - t) * 0.12 + t * 0.015;
-        g = (1 - t) * 0.23 + t * 0.04;
-        b = (1 - t) * 0.24 + t * 0.09;
+        // Horizon (0) to Zenith (1)
+        const t = Math.pow(normalizedY, 0.7);
+        r = (1 - t) * 0.059 + t * 0.016;
+        g = (1 - t) * 0.122 + t * 0.035;
+        b = (1 - t) * 0.133 + t * 0.051;
       } else {
-        // Below horizon
-        const t = Math.min(1, -normalizedY * 2);
-        r = (1 - t) * 0.12 + t * 0.01;
-        g = (1 - t) * 0.23 + t * 0.02;
-        b = (1 - t) * 0.24 + t * 0.03;
+        // Below horizon into dark earth/depth
+        const t = Math.min(1, -normalizedY * 3);
+        r = (1 - t) * 0.059 + t * 0.005;
+        g = (1 - t) * 0.122 + t * 0.01;
+        b = (1 - t) * 0.133 + t * 0.015;
       }
 
       colors[i * 3] = r;
@@ -87,55 +84,70 @@ export class Sky {
     this.skyDome.renderOrder = -100;
     scene.add(this.skyDome);
 
-    // ── Moon Disc ────────────────────────────────────────────────────────
-    // Bright pale disc (~#cfe3ee), ~30° elevation in initial look direction
-    const moonGeo = new SphereGeometry(12, 24, 24);
+    // ── Moon Disc: circular, pale cold tint (#d6e5ef), fog: false ────────
+    // Sphere with high segment count guarantees a round silhouette in perspective
+    const moonGeo = new SphereGeometry(10, 32, 32);
     const moonMat = new MeshBasicMaterial({
-      color: 0xcfe3ee,
+      color: 0xd6e5ef,
       fog: false,
       depthWrite: false,
     });
     this.moonDisc = new Mesh(moonGeo, moonMat);
-    // Distance ~380m, elevation ~30 deg (sin(30)=0.5, cos(30)=0.866)
-    // Camera initially looks along -Z. Let's place it at x: -30, y: 190, z: -330
-    this.moonDisc.position.set(-30, 190, -330);
+    // At distance ~380m, elevation ~30° along -Z
+    this.moonDisc.position.set(-25, 185, -330);
     this.moonDisc.renderOrder = -90;
     scene.add(this.moonDisc);
 
-    // ── Moon Additive Glow Sprite ────────────────────────────────────────
-    // Generate soft circular glow texture via canvas
-    const glowCanvas = document.createElement('canvas');
-    glowCanvas.width = 128;
-    glowCanvas.height = 128;
-    const ctx = glowCanvas.getContext('2d')!;
-    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(207, 227, 238, 0.8)');
-    grad.addColorStop(0.2, 'rgba(160, 205, 230, 0.45)');
-    grad.addColorStop(0.5, 'rgba(90, 150, 180, 0.15)');
+    // ── Moon Halos: softer, larger additive glows ─────────────────────────
+    const haloCanvas = document.createElement('canvas');
+    haloCanvas.width = 256;
+    haloCanvas.height = 256;
+    const hctx = haloCanvas.getContext('2d')!;
+    const grad = hctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, 'rgba(214, 229, 239, 0.95)');
+    grad.addColorStop(0.12, 'rgba(180, 215, 230, 0.65)');
+    grad.addColorStop(0.35, 'rgba(110, 175, 195, 0.25)');
+    grad.addColorStop(0.65, 'rgba(40, 95, 115, 0.08)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 128, 128);
+    hctx.fillStyle = grad;
+    hctx.fillRect(0, 0, 256, 256);
 
-    const glowTex = new CanvasTexture(glowCanvas);
-    const glowMat = new MeshBasicMaterial({
-      map: glowTex,
+    const haloTex = new CanvasTexture(haloCanvas);
+
+    // Inner bright halo
+    const innerHaloMat = new MeshBasicMaterial({
+      map: haloTex,
       transparent: true,
       blending: AdditiveBlending,
       fog: false,
       depthWrite: false,
+      opacity: 0.9,
     });
+    const innerHaloGeo = new PlaneGeometry(95, 95);
+    this.moonHalo = new Mesh(innerHaloGeo, innerHaloMat);
+    this.moonHalo.position.set(-25, 185, -326);
+    this.moonHalo.lookAt(0, 0, 0);
+    this.moonHalo.renderOrder = -88;
+    scene.add(this.moonHalo);
 
-    const glowGeo = new PlaneGeometry(80, 80);
-    this.moonGlow = new Mesh(glowGeo, glowMat);
-    this.moonGlow.position.set(-30, 190, -325);
-    // Look towards origin/camera
-    this.moonGlow.lookAt(0, 0, 0);
-    this.moonGlow.renderOrder = -85;
-    scene.add(this.moonGlow);
+    // Outer soft atmospheric haze halo
+    const outerHaloMat = new MeshBasicMaterial({
+      map: haloTex,
+      transparent: true,
+      blending: AdditiveBlending,
+      fog: false,
+      depthWrite: false,
+      opacity: 0.45,
+    });
+    const outerHaloGeo = new PlaneGeometry(220, 220);
+    this.moonOuterHalo = new Mesh(outerHaloGeo, outerHaloMat);
+    this.moonOuterHalo.position.set(-25, 185, -325);
+    this.moonOuterHalo.lookAt(0, 0, 0);
+    this.moonOuterHalo.renderOrder = -87;
+    scene.add(this.moonOuterHalo);
   }
 
   update(_elapsed: number, playerX = 0, playerY = 0, playerZ = 0): void {
-    // Keep sky dome centered on player
     this.skyDome.position.set(playerX, playerY, playerZ);
   }
 }

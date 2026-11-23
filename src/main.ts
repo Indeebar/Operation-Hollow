@@ -26,25 +26,25 @@ const input = new Input(canvas);
 const game = new Game();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
-// Reduced density so things stay visible to ~60-80m;
-// fog color slightly lighter than ground (~#12292b)
-scene.fog = new FogExp2(0x12292b, 0.012);
-scene.background = new Color(0x0a1618);
+// Dark teal fog matching the horizon: #0f1f22
+// Density tuned for 60-80m atmospheric fadeout
+scene.fog = new FogExp2(0x0f1f22, 0.0135);
+scene.background = new Color(0x0f1f22);
 
 // ── Terrain ───────────────────────────────────────────────────────────────────
 const terrain = new Terrain();
 scene.add(terrain.getMesh());
 
-// ── Sky & Lighting (dome, moon disc + glow, ambient, directional) ─────────────
+// ── Sky & Lighting (dome, moon disc + soft large halo, subtle moon dir light) ──
 const sky = new Sky(scene);
 scene.add(sky.moon.target);
 
 // ── Ground Mist ───────────────────────────────────────────────────────────────
 const groundMist = new GroundMist(scene);
 
-// ── Forest ────────────────────────────────────────────────────────────────────
-console.log('[Forest] Building instanced trees...');
-const forest = new Forest(terrain, 2500);
+// ── Forest (dense within 60m, pines, dead trees, ferns, rocks, fallen logs) ───
+console.log('[Forest] Building instanced trees and forest clutter...');
+const forest = new Forest(terrain, 3400);
 for (const mesh of forest.getMeshes()) {
   scene.add(mesh);
 }
@@ -56,7 +56,9 @@ scene.add(player.getObject());
 player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
 
 // ── F3 FPS toggle ─────────────────────────────────────────────────────────────
-let showFps = false;
+let showFps = true; // Enabled by default to monitor FPS
+fpsEl.style.display = 'block';
+
 window.addEventListener('keydown', e => {
   if (e.code === 'F3') {
     showFps = !showFps;
@@ -87,17 +89,17 @@ renderer.renderer.setAnimationLoop((now: number) => {
     game.transition('PLAYING');
   }
 
-  // Update player
+  // Update player movement & camera
   if (input.pointerLocked) {
     player.update(time.delta);
   }
 
-  // Update sky dome centering and mist drift
+  // Center sky dome and drift ground mist around player
   const pp = player.getObject().position;
   sky.update(time.elapsed, pp.x, pp.y, pp.z);
   groundMist.update(time.elapsed, pp.x, pp.z);
 
-  // Track moon directional shadow camera near player
+  // Position directional moon shadow camera near player
   sky.moon.target.position.set(pp.x, pp.y, pp.z);
 
   if (showFps) {

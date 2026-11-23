@@ -6,7 +6,7 @@ import {
   RepeatWrapping,
 } from 'three/webgpu';
 
-// Simple 2D value noise (no external deps)
+// Simple 2D value noise
 function hash(x: number, y: number): number {
   let h = x * 374761393 + y * 668265263;
   h = ((h ^ (h >>> 13)) * 1274126177) & 0x7fffffff;
@@ -52,11 +52,8 @@ function fbm(x: number, y: number, octaves: number = 5): number {
 export const TERRAIN_SIZE = 400;
 export const TERRAIN_SEGMENTS = 128;
 
-// Trail path function: returns trail distance for a given world coordinate (x, z)
-// A winding trail starting from spawn (0, 0) winding into the forest towards -Z
+// Trail path function: winding trail starting from spawn (0, 0)
 export function getTrailDistance(x: number, z: number): number {
-  // Trail center curves smoothly with z
-  // e.g. x_trail = sin(z * 0.03) * 12 + sin(z * 0.01) * 20
   const trailX = Math.sin(z * 0.03) * 12 + Math.sin(z * 0.01) * 20;
   return Math.abs(x - trailX);
 }
@@ -79,7 +76,7 @@ export class Terrain {
       const nz = (wz / size + 0.5) * 4;
       let h = (fbm(nx, nz) - 0.5) * 12; // ±6m
 
-      // Slightly flatten the trail path for smooth walking
+      // Flatten walking trail path slightly
       const trailDist = getTrailDistance(wx, wz);
       if (trailDist < 4.0) {
         const factor = smoothstep(trailDist / 4.0);
@@ -91,14 +88,12 @@ export class Terrain {
     pos.needsUpdate = true;
     geo.computeVertexNormals();
 
-    // Procedural terrain texture: 512x512 canvas with dark wet forest ground,
-    // roughness variation, and lighter packed-dirt trail
+    // Procedural terrain texture: near-black wet ground + subtle roughness noise + lighter dirt trail
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    // Roughness canvas for specular/wet look
     const roughCanvas = document.createElement('canvas');
     roughCanvas.width = 512;
     roughCanvas.height = 512;
@@ -109,32 +104,33 @@ export class Terrain {
 
     for (let py = 0; py < 512; py++) {
       for (let px = 0; px < 512; px++) {
-        // Map pixel to world space [-200, 200]
         const wx = (px / 512 - 0.5) * size;
         const wz = (py / 512 - 0.5) * size;
 
-        // Ground base: dark pine needles / wet soil (~#152019)
-        const n = fbm(px * 0.05, py * 0.05, 3);
+        const n = fbm(px * 0.06, py * 0.06, 4);
+        const fineNoise = hash(px, py);
         const trailDist = getTrailDistance(wx, wz);
-        const trailT = Math.max(0, 1 - trailDist / 3.2); // 1 on trail center, 0 outside
+        const trailT = Math.max(0, 1 - trailDist / 3.0);
 
-        // Base dark wet forest floor
-        let r = 18 + n * 12;
-        let g = 28 + n * 14;
-        let b = 22 + n * 10;
-        let roughness = 200 - n * 50; // moderately wet (some specular shine)
+        // Near-black wet ground base (~#090e0b to #0e1410)
+        let r = 7 + n * 6;
+        let g = 11 + n * 7;
+        let b = 9 + n * 6;
+        // Wet roughness with fine grain noise (lower = shinier wet puddles/damp mud)
+        let roughness = 110 + n * 60 + fineNoise * 20;
 
-        // Packed-dirt trail: lighter warm-brown/khaki dirt (~#42392c)
+        // Lighter dirt trail (~#2e2a22)
         if (trailT > 0) {
-          const trailR = 66 + n * 15;
-          const trailG = 58 + n * 12;
-          const trailB = 46 + n * 10;
+          const trailR = 44 + n * 12;
+          const trailG = 40 + n * 10;
+          const trailB = 32 + n * 8;
           const tSmoothed = smoothstep(trailT);
 
           r = lerp(r, trailR, tSmoothed);
           g = lerp(g, trailG, tSmoothed);
           b = lerp(b, trailB, tSmoothed);
-          roughness = lerp(roughness, 140, tSmoothed); // packed damp dirt has nice sheen
+          // Packed damp dirt path sheen
+          roughness = lerp(roughness, 130 + fineNoise * 30, tSmoothed);
         }
 
         const idx = (py * 512 + px) * 4;
@@ -163,8 +159,8 @@ export class Terrain {
     const mat = new MeshStandardMaterial({
       map: diffuseTex,
       roughnessMap: roughnessTex,
-      roughness: 0.85,
-      metalness: 0.1, // wet sheen under moonlight
+      roughness: 0.75,
+      metalness: 0.15, // wet sheen under faint moonlight
     });
 
     this.mesh = new Mesh(geo, mat);

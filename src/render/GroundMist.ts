@@ -9,37 +9,45 @@ import {
 } from 'three/webgpu';
 
 export class GroundMist {
-  private planes: { mesh: Mesh; speed: number; phase: number }[] = [];
+  private planes: { mesh: Mesh; speedX: number; speedZ: number; phase: number }[] = [];
 
   constructor(scene: Scene) {
-    const mistColor = new Color(0x0d2020);
-    for (let i = 0; i < 6; i++) {
-      const geo = new PlaneGeometry(80 + i * 20, 60 + i * 15);
+    // Dark teal ground mist matching the horizon fog color (#0f1f22)
+    const mistColor = new Color(0x0f1f22);
+
+    // 8 low, expansive drifting mist layers hovering just above terrain
+    for (let i = 0; i < 8; i++) {
+      const geo = new PlaneGeometry(110 + i * 15, 90 + i * 12);
       const mat = new MeshBasicMaterial({
         color: mistColor,
         transparent: true,
-        opacity: 0.18 - i * 0.02,
+        opacity: 0.14 - i * 0.012,
         side: DoubleSide,
         depthWrite: false,
       });
       const mesh = new Mesh(geo, mat);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(
-        (Math.random() - 0.5) * 100,
-        0.3 + i * 0.4,
-        (Math.random() - 0.5) * 100,
+        (Math.random() - 0.5) * 60,
+        0.4 + i * 0.28,
+        (Math.random() - 0.5) * 60,
       );
-      mesh.renderOrder = -1;
+      mesh.renderOrder = -10;
       scene.add(mesh);
-      this.planes.push({ mesh, speed: 0.3 + Math.random() * 0.4, phase: i * 1.1 });
+      this.planes.push({
+        mesh,
+        speedX: 0.15 + (Math.random() - 0.5) * 0.15,
+        speedZ: 0.2 + Math.random() * 0.2,
+        phase: i * 0.9,
+      });
     }
   }
 
   update(elapsed: number, playerX: number, playerZ: number): void {
     for (const p of this.planes) {
-      // Drift slowly, follow player loosely
-      p.mesh.position.x = playerX + Math.sin(elapsed * p.speed * 0.1 + p.phase) * 30;
-      p.mesh.position.z = playerZ + Math.cos(elapsed * p.speed * 0.07 + p.phase) * 30;
+      // Drifts slowly across the forest floor while staying in player range
+      p.mesh.position.x = playerX + Math.sin(elapsed * p.speedX * 0.2 + p.phase) * 35;
+      p.mesh.position.z = playerZ + Math.cos(elapsed * p.speedZ * 0.15 + p.phase) * 35;
     }
   }
 }
