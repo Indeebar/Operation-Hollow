@@ -1,12 +1,20 @@
 export class Input {
   private keys: Set<string> = new Set();
+  private justPressedKeys: Set<string> = new Set();
   private mouseMovX: number = 0;
   private mouseMovY: number = 0;
   pointerLocked: boolean = false;
 
   constructor(private canvas: HTMLCanvasElement) {
-    window.addEventListener('keydown', e => this.keys.add(e.code));
-    window.addEventListener('keyup', e => this.keys.delete(e.code));
+    window.addEventListener('keydown', e => {
+      if (!this.keys.has(e.code)) {
+        this.justPressedKeys.add(e.code);
+      }
+      this.keys.add(e.code);
+    });
+    window.addEventListener('keyup', e => {
+      this.keys.delete(e.code);
+    });
     document.addEventListener('mousemove', e => {
       if (this.pointerLocked) {
         this.mouseMovX += e.movementX;
@@ -23,6 +31,14 @@ export class Input {
 
   isDown(code: string): boolean {
     return this.keys.has(code);
+  }
+
+  isJustPressed(code: string): boolean {
+    return this.justPressedKeys.has(code);
+  }
+
+  clearFrame(): void {
+    this.justPressedKeys.clear();
   }
 
   flushMouse(): { x: number; y: number } {

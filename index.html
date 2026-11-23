@@ -11,9 +11,20 @@
     <canvas id="gameCanvas"></canvas>
     <div id="hud">
       <div id="crosshair">+</div>
-      <div id="fps-counter" style="display:none">FPS: 0</div>
-      <div id="info-bar">Click to start | WASD move | Mouse look | F3: FPS</div>
-      <div id="pointer-lock-msg" style="display:none">Click to capture mouse</div>
+      <div id="fps-counter">FPS: 0</div>
+      <div id="status-hud">
+        <div id="flashlight-status">
+          <span class="hud-label">LIGHT:</span>
+          <span id="light-state">ON</span>
+          <div class="battery-bar-container">
+            <div id="battery-fill" style="width: 100%;"></div>
+          </div>
+          <span id="battery-pct">100%</span>
+          <span id="battery-count">(x3)</span>
+        </div>
+      </div>
+      <div id="info-bar">Click to capture mouse | [F] Flashlight | [R] Swap Battery | [Shift] Sprint</div>
+      <div id="prompt-msg" style="display:none"></div>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
