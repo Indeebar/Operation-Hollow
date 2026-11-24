@@ -60,6 +60,16 @@ const dbgGrading = document.getElementById('dbg-grading') as HTMLInputElement;
 const dbgFearSlider = document.getElementById('dbg-fear-slider') as HTMLInputElement;
 const dbgFearVal = document.getElementById('dbg-fear-val') as HTMLSpanElement;
 
+// Audio Debug layer refs
+const dbgAudioWind = document.getElementById('dbg-audio-wind') as HTMLInputElement;
+const dbgAudioInsects = document.getElementById('dbg-audio-insects') as HTMLInputElement;
+const dbgAudioOwl = document.getElementById('dbg-audio-owl') as HTMLInputElement;
+const dbgAudioCreaks = document.getElementById('dbg-audio-creaks') as HTMLInputElement;
+const dbgAudioDrone = document.getElementById('dbg-audio-drone') as HTMLInputElement;
+const dbgAudioHeartbeat = document.getElementById('dbg-audio-heartbeat') as HTMLInputElement;
+const dbgAudioFootsteps = document.getElementById('dbg-audio-footsteps') as HTMLInputElement;
+const dbgAudioSfx = document.getElementById('dbg-audio-sfx') as HTMLInputElement;
+
 const dbgMoonShadow = document.getElementById('dbg-moon-shadow') as HTMLInputElement;
 const dbgTorchShadow = document.getElementById('dbg-torch-shadow') as HTMLInputElement;
 const dbgMist = document.getElementById('dbg-mist') as HTMLInputElement;
@@ -234,6 +244,32 @@ addManagedListener(dbgGrading, 'change', () => {
 addManagedListener(dbgFearSlider, 'input', () => {
   fearLevel = parseFloat(dbgFearSlider.value);
   dbgFearVal.textContent = fearLevel.toFixed(2);
+});
+
+// Audio Debug Layer toggles
+addManagedListener(dbgAudioWind, 'change', () => {
+  audio.setLayerEnabled('wind', dbgAudioWind.checked);
+});
+addManagedListener(dbgAudioInsects, 'change', () => {
+  audio.setLayerEnabled('insects', dbgAudioInsects.checked);
+});
+addManagedListener(dbgAudioOwl, 'change', () => {
+  audio.setLayerEnabled('owl', dbgAudioOwl.checked);
+});
+addManagedListener(dbgAudioCreaks, 'change', () => {
+  audio.setLayerEnabled('creaks', dbgAudioCreaks.checked);
+});
+addManagedListener(dbgAudioDrone, 'change', () => {
+  audio.setLayerEnabled('drone', dbgAudioDrone.checked);
+});
+addManagedListener(dbgAudioHeartbeat, 'change', () => {
+  audio.setLayerEnabled('heartbeat', dbgAudioHeartbeat.checked);
+});
+addManagedListener(dbgAudioFootsteps, 'change', () => {
+  audio.setLayerEnabled('footsteps', dbgAudioFootsteps.checked);
+});
+addManagedListener(dbgAudioSfx, 'change', () => {
+  audio.setLayerEnabled('sfx', dbgAudioSfx.checked);
 });
 
 addManagedListener(dbgMoonShadow, 'change', () => {
