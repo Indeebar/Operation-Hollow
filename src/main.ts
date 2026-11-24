@@ -1,3 +1,4 @@
+// src/main.ts
 import {
   Scene,
   FogExp2,
@@ -16,6 +17,22 @@ import { Flashlight } from './player/Flashlight';
 import { ViewmodelRig } from './player/ViewmodelRig';
 import { Terrain } from './world/Terrain';
 import { Forest } from './world/Forest';
+
+// ── Guard against double initialization & HMR leak ───────────────────────────
+interface GameInstance {
+  dispose: () => void;
+}
+declare global {
+  interface Window {
+    __HOLLOW_GAME__?: GameInstance;
+  }
+}
+
+if (window.__HOLLOW_GAME__) {
+  console.warn('[Hollow Watch] Disposing existing game instance before re-initialization...');
+  window.__HOLLOW_GAME__.dispose();
+  window.__HOLLOW_GAME__ = undefined;
+}
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -105,58 +122,84 @@ const flashlight = new Flashlight(player.camera, scene);
 const viewmodel = new ViewmodelRig();
 viewmodelScene.add(viewmodel.group);
 
-// ── Post Processing Pipeline (Milestone M6) ───────────────────────────────────
-const postFX = new PostFX(renderer.renderer, scene, player.camera);
+// ── Post Processing Pipeline (Opt-in & OFF by default) ───────────────────────
+let postFX: PostFX | null = null;
+try {
+  postFX = new PostFX(renderer.renderer, scene, player.camera);
+} catch (e) {
+  console.warn('[PostFX] PostFX pipeline initialization deferred/unavailable:', e);
+}
 
 // ── Dynamic Game States ───────────────────────────────────────────────────────
 let rKeyHeldDuration = 0;
 let rKeyTriggeredHold = false;
 let renderViewmodelPass = true;
-let enablePostFXMaster = true;
+let enablePostFXMaster = false; // OFF by default
 let isPaused = false;
 let fearLevel = 0.0;
 let threatLevel = 0.15;
 let footstepTimer = 0.0;
+let isDisposed = false;
+
+// Initialize Debug UI checkboxes to match initial state
+if (dbgPostfxMaster) dbgPostfxMaster.checked = false;
+if (dbgBloom) dbgBloom.checked = false;
+if (dbgVignette) dbgVignette.checked = false;
+if (dbgGrain) dbgGrain.checked = false;
+if (dbgChromatic) dbgChromatic.checked = false;
+if (dbgGrading) dbgGrading.checked = false;
 
 // ── Quality Settings ──────────────────────────────────────────────────────────
 function updateQualityUI(preset: string): void {
   qualityToggleEl.textContent = `QUALITY: ${preset.toUpperCase()}`;
   forest.setQuality(preset as 'low' | 'medium' | 'high');
-  postFX.setQuality(preset as 'low' | 'medium' | 'high');
-
-  // Sync checkboxes
-  dbgBloom.checked = postFX.enableBloom;
-  dbgChromatic.checked = postFX.enableChromatic;
-  dbgGrading.checked = postFX.enableGrading;
-  dbgVignette.checked = postFX.enableVignette;
-  dbgGrain.checked = postFX.enableGrain;
+  if (postFX && postFX.isReady) {
+    postFX.setQuality(preset as 'low' | 'medium' | 'high');
+    dbgBloom.checked = postFX.enableBloom;
+    dbgChromatic.checked = postFX.enableChromatic;
+    dbgGrading.checked = postFX.enableGrading;
+    dbgVignette.checked = postFX.enableVignette;
+    dbgGrain.checked = postFX.enableGrain;
+  }
 }
-qualityToggleEl.addEventListener('click', () => {
-  const newQ = renderer.toggleQuality();
-  updateQualityUI(newQ);
-});
 
 // ── Pause Menu & Audio Controls ───────────────────────────────────────────────
 function setPaused(paused: boolean): void {
   isPaused = paused;
   pauseMenu.style.display = isPaused ? 'flex' : 'none';
   if (isPaused) {
+    audio.pause();
     if (document.pointerLockElement) document.exitPointerLock();
+  } else {
+    audio.resume();
   }
 }
 
-volumeSlider.addEventListener('input', () => {
+// ── Event Listener Setup & Registration ───────────────────────────────────────
+const listeners: Array<{ target: EventTarget; type: string; handler: EventListenerOrEventListenerObject }> = [];
+
+function addManagedListener(target: EventTarget, type: string, handler: EventListenerOrEventListenerObject): void {
+  target.addEventListener(type, handler);
+  listeners.push({ target, type, handler });
+}
+
+addManagedListener(qualityToggleEl, 'click', () => {
+  const newQ = renderer.toggleQuality();
+  updateQualityUI(newQ);
+});
+
+addManagedListener(volumeSlider, 'input', () => {
   const v = parseFloat(volumeSlider.value);
   audio.setVolume(v);
   volumeVal.textContent = `${Math.round(v * 100)}%`;
 });
 
-muteBtn.addEventListener('click', () => {
+addManagedListener(muteBtn, 'click', () => {
   const muted = audio.toggleMute();
   muteBtn.textContent = muted ? 'Unmute Audio [M]' : 'Mute Audio [M]';
 });
 
-resumeBtn.addEventListener('click', () => {
+addManagedListener(resumeBtn, 'click', () => {
   setPaused(false);
   canvas.requestPointerLock();
 });
@@ -168,55 +211,56 @@ function toggleDebugPanel(): void {
   debugPanel.style.display = debugOpen ? 'flex' : 'none';
 }
 
-dbgPostfxMaster.addEventListener('change', () => {
+addManagedListener(dbgPostfxMaster, 'change', () => {
   enablePostFXMaster = dbgPostfxMaster.checked;
+  console.log('[PostFX] Master toggled:', enablePostFXMaster);
 });
-dbgBloom.addEventListener('change', () => {
-  postFX.setBloomEnabled(dbgBloom.checked);
+addManagedListener(dbgBloom, 'change', () => {
+  if (postFX) postFX.setBloomEnabled(dbgBloom.checked);
 });
-dbgVignette.addEventListener('change', () => {
-  postFX.setVignetteEnabled(dbgVignette.checked);
+addManagedListener(dbgVignette, 'change', () => {
+  if (postFX) postFX.setVignetteEnabled(dbgVignette.checked);
 });
-dbgGrain.addEventListener('change', () => {
-  postFX.setGrainEnabled(dbgGrain.checked);
+addManagedListener(dbgGrain, 'change', () => {
+  if (postFX) postFX.setGrainEnabled(dbgGrain.checked);
 });
-dbgChromatic.addEventListener('change', () => {
-  postFX.setChromaticEnabled(dbgChromatic.checked);
+addManagedListener(dbgChromatic, 'change', () => {
+  if (postFX) postFX.setChromaticEnabled(dbgChromatic.checked);
 });
-dbgGrading.addEventListener('change', () => {
-  postFX.setGradingEnabled(dbgGrading.checked);
+addManagedListener(dbgGrading, 'change', () => {
+  if (postFX) postFX.setGradingEnabled(dbgGrading.checked);
 });
 
-dbgFearSlider.addEventListener('input', () => {
+addManagedListener(dbgFearSlider, 'input', () => {
   fearLevel = parseFloat(dbgFearSlider.value);
   dbgFearVal.textContent = fearLevel.toFixed(2);
 });
 
-dbgMoonShadow.addEventListener('change', () => {
+addManagedListener(dbgMoonShadow, 'change', () => {
   sky.setMoonShadow(dbgMoonShadow.checked);
 });
-dbgTorchShadow.addEventListener('change', () => {
+addManagedListener(dbgTorchShadow, 'change', () => {
   flashlight.setShadow(dbgTorchShadow.checked);
 });
-dbgMist.addEventListener('change', () => {
+addManagedListener(dbgMist, 'change', () => {
   groundMist.setVisible(dbgMist.checked);
 });
-dbgClutter.addEventListener('change', () => {
+addManagedListener(dbgClutter, 'change', () => {
   forest.setClutterVisible(dbgClutter.checked);
 });
-dbgViewmodelPass.addEventListener('change', () => {
+addManagedListener(dbgViewmodelPass, 'change', () => {
   renderViewmodelPass = dbgViewmodelPass.checked;
 });
 
-dbgPr10.addEventListener('click', () => {
+addManagedListener(dbgPr10, 'click', () => {
   renderer.renderer.setPixelRatio(1.0);
   renderer.renderer.setSize(window.innerWidth, window.innerHeight);
 });
-dbgPr125.addEventListener('click', () => {
+addManagedListener(dbgPr125, 'click', () => {
   renderer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.renderer.setSize(window.innerWidth, window.innerHeight);
 });
-dbgPr15.addEventListener('click', () => {
+addManagedListener(dbgPr15, 'click', () => {
   renderer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.renderer.setSize(window.innerWidth, window.innerHeight);
 });
@@ -225,7 +269,7 @@ dbgPr15.addEventListener('click', () => {
 let showFps = true;
 fpsEl.style.display = 'block';
 
-window.addEventListener('keydown', e => {
+const handleKeyDown = (e: KeyboardEvent) => {
   if (e.code === 'F3') {
     showFps = !showFps;
     fpsEl.style.display = showFps ? 'block' : 'none';
@@ -247,27 +291,28 @@ window.addEventListener('keydown', e => {
     setPaused(!isPaused);
     e.preventDefault();
   }
-});
+};
+addManagedListener(window, 'keydown', handleKeyDown as EventListener);
 
 // ── Pointer lock UI ───────────────────────────────────────────────────────────
-document.addEventListener('pointerlockchange', () => {
+const handlePointerLockChange = () => {
   const locked = document.pointerLockElement === canvas;
   infoEl.style.display = locked ? 'none' : 'block';
-  if (!locked && !debugOpen && !isPaused) {
-    // If lost focus not by debug or pause, show click hint
-  }
-});
+};
+addManagedListener(document, 'pointerlockchange', handlePointerLockChange);
 
 // ── Resize ────────────────────────────────────────────────────────────────────
-window.addEventListener('resize', () => {
+const handleResize = () => {
   renderer.resize();
   player.onResize();
   viewmodel.onResize();
-});
+};
+addManagedListener(window, 'resize', handleResize);
 
 // ── Game loop ─────────────────────────────────────────────────────────────────
 let started = false;
 renderer.renderer.setAnimationLoop((now: number) => {
+  if (isDisposed) return;
   time.tick(now);
 
   if (!started) {
@@ -362,7 +407,9 @@ renderer.renderer.setAnimationLoop((now: number) => {
 
   // ── Update Audio & PostFX Dynamic States ─────────────────────────────────
   audio.update(time.delta, fearLevel, threatLevel);
-  postFX.update(time.delta, fearLevel);
+  if (postFX && postFX.isReady) {
+    postFX.update(time.delta, fearLevel);
+  }
 
   // ── Update Viewmodel Rig & Flashlight ────────────────────────────────────
   viewmodel.update(time.delta, flashlight.battery, mouseDelta, isMoving, time.elapsed * 8);
@@ -436,17 +483,84 @@ renderer.renderer.setAnimationLoop((now: number) => {
   }
 
   // ── Render Passes ────────────────────────────────────────────────────────
-  // Main World Pass: Render either via PostProcessing Pipeline or standard render
-  if (enablePostFXMaster) {
-    postFX.render();
+  // Always clear both color and depth at start of frame so no frames smear
+  renderer.renderer.clear();
+
+  // World Pass: direct render by default; opt-in PostFX pipeline if enabled
+  if (enablePostFXMaster && postFX && postFX.isReady) {
+    try {
+      postFX.render();
+    } catch (err) {
+      console.warn('[PostFX] Render error caught, falling back to direct render:', err);
+      enablePostFXMaster = false;
+      if (dbgPostfxMaster) dbgPostfxMaster.checked = false;
+      renderer.renderer.render(scene, player.camera);
+    }
   } else {
-    renderer.renderer.clear();
     renderer.renderer.render(scene, player.camera);
   }
 
-  // Viewmodel Pass: Depth-cleared overlay on top of screen
+  // Viewmodel Pass: Depth-cleared overlay on top of fresh world frame
   if (renderViewmodelPass) {
     renderer.renderer.clearDepth();
     renderer.renderer.render(viewmodelScene, viewmodel.camera);
   }
 });
+
+// ── Teardown & Hot Module Disposal ────────────────────────────────────────────
+function disposeGame(): void {
+  isDisposed = true;
+  console.log('[Hollow Watch] Starting clean game disposal...');
+
+  // 1. Stop animation loop
+  try {
+    renderer.renderer.setAnimationLoop(null);
+  } catch (e) {
+    console.warn('[Hollow Watch] Error cancelling animation loop:', e);
+  }
+
+  // 2. Stop audio
+  try {
+    audio.dispose();
+  } catch (e) {
+    console.warn('[Hollow Watch] Error disposing audio:', e);
+  }
+
+  // 3. Remove event listeners
+  for (const { target, type, handler } of listeners) {
+    target.removeEventListener(type, handler);
+  }
+  listeners.length = 0;
+
+  // 4. Dispose PostFX
+  if (postFX) {
+    try {
+      postFX.dispose();
+    } catch (e) {
+      console.warn('[Hollow Watch] Error disposing postfx:', e);
+    }
+  }
+
+  // 5. Dispose renderer
+  try {
+    renderer.renderer.dispose();
+  } catch (e) {
+    console.warn('[Hollow Watch] Error disposing renderer:', e);
+  }
+
+  console.log('[Hollow Watch] Teardown complete ✓');
+}
+
+window.__HOLLOW_GAME__ = {
+  dispose: disposeGame,
+};
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    console.log('[HMR] Hot module dispose triggered.');
+    if (window.__HOLLOW_GAME__) {
+      window.__HOLLOW_GAME__.dispose();
+      window.__HOLLOW_GAME__ = undefined;
+    }
+  });
+}

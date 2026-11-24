@@ -24,24 +24,25 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 export class PostFX {
-  pipeline: RenderPipeline;
+  pipeline: RenderPipeline | null = null;
+  isReady: boolean = false;
 
   // Uniform nodes for live control
   private uBloomStrength = uniform(0.35);
-  private uGrainIntensity = uniform(0.045);
+  private uGrainIntensity = uniform(0.04);
   private uFear = uniform(0.0);
-  private uEnableBloom = uniform(1.0);
-  private uEnableVignette = uniform(1.0);
-  private uEnableGrain = uniform(1.0);
-  private uEnableChromatic = uniform(1.0);
-  private uEnableGrading = uniform(1.0);
+  private uEnableBloom = uniform(0.0);
+  private uEnableVignette = uniform(0.0);
+  private uEnableGrain = uniform(0.0);
+  private uEnableChromatic = uniform(0.0);
+  private uEnableGrading = uniform(0.0);
 
-  // States
-  enableBloom: boolean = true;
-  enableVignette: boolean = true;
-  enableGrain: boolean = true;
-  enableChromatic: boolean = true;
-  enableGrading: boolean = true;
+  // States - OFF by default per user instruction
+  enableBloom: boolean = false;
+  enableVignette: boolean = false;
+  enableGrain: boolean = false;
+  enableChromatic: boolean = false;
+  enableGrading: boolean = false;
 
   private pulseTime: number = 0;
 
@@ -50,49 +51,69 @@ export class PostFX {
     private scene: Scene,
     private camera: PerspectiveCamera,
   ) {
-    this.pipeline = new RenderPipeline(renderer);
-    this.buildGraph();
+    this.init();
+  }
+
+  private init(): void {
+    try {
+      this.pipeline = new RenderPipeline(this.renderer);
+      this.buildGraph();
+      this.isReady = true;
+      console.log('[PostFX] RenderPipeline built successfully ✓');
+    } catch (e) {
+      console.warn('[PostFX] Failed to initialize RenderPipeline, falling back to direct render:', e);
+      this.isReady = false;
+      this.pipeline = null;
+    }
   }
 
   private buildGraph(): void {
+    if (!this.pipeline) return;
+
     // 1. Base Scene Pass
     const scenePass = pass(this.scene, this.camera);
     const baseColor = scenePass.getTextureNode('output');
 
-    // 2. Subtle Bloom (moon, lantern, wrist screen)
-    // Scaled with uEnableBloom
-    const rawBloom = bloom(baseColor, 0.35, 0.45, 0.75);
-    const afterBloom = mix(baseColor, nodeObject(rawBloom), this.uEnableBloom);
+    let afterBloom: any = baseColor;
+    try {
+      // 2. Bloom node
+      const rawBloom = bloom(baseColor, 0.35, 0.45, 0.75);
+      afterBloom = mix(baseColor, nodeObject(rawBloom), this.uEnableBloom);
+    } catch (bloomErr) {
+      console.warn('[PostFX] BloomNode not supported on this device/backend:', bloomErr);
+    }
 
-    // 3. Chromatic Aberration at Screen Edges (TSL radial RGB split)
+    // 3. Screen coordinates for radial effects
     const uvCoord = screenUV;
     const centerOffset = length(uvCoord.sub(vec2(0.5, 0.5)));
-    // Split R and B slightly based on radial distance
-    const rShift = uvCoord.add(vec2(0.003, 0.001).mul(centerOffset).mul(this.uEnableChromatic));
-    const bShift = uvCoord.sub(vec2(0.003, 0.001).mul(centerOffset).mul(this.uEnableChromatic));
-    const rSample = scenePass.getTextureNode('output').sample(rShift).r;
-    const bSample = scenePass.getTextureNode('output').sample(bShift).b;
-    const chromaticRgb = vec3(rSample, afterBloom.g, bSample);
-    const afterChromatic = mix(afterBloom.rgb, chromaticRgb, this.uEnableChromatic);
 
     // 4. Color Grading (crushed blacks, teal shadows, warm highlights)
     // Cool horror tint: R*0.82, G*0.96, B*1.06
-    const gradedRgb = afterChromatic.mul(vec3(0.82, 0.96, 1.06));
-    const afterGrading = mix(afterChromatic, gradedRgb, this.uEnableGrading);
+    const gradedRgb = afterBloom.rgb.mul(vec3(0.82, 0.96, 1.06));
+    const afterGrading = mix(afterBloom.rgb, gradedRgb, this.uEnableGrading);
 
-    // 5. Vignette with Dynamic Fear Pulse
-    // Fear increases darkness and pulses inwards
+    // 5. Chromatic Aberration simulation (edge color shift)
+    // Edge channel tint modulation
+    const edgeTint = vec3(
+      float(1.0).add(centerOffset.mul(0.12)),
+      float(1.0),
+      float(1.0).sub(centerOffset.mul(0.12))
+    );
+    const chromaticRgb = afterGrading.mul(edgeTint);
+    const afterChromatic = mix(afterGrading, chromaticRgb, this.uEnableChromatic);
+
+    // 6. Vignette with Dynamic Fear Pulse
     const dist = length(uvCoord.sub(vec2(0.5, 0.5)));
     const vigRadius = float(0.75).sub(this.uFear.mul(0.2));
     const vig = smoothstep(vigRadius, float(0.25), dist);
     const vigFactor = mix(float(1.0), vig, this.uEnableVignette);
-    const afterVignette = afterGrading.mul(vigFactor);
+    const afterVignette = afterChromatic.mul(vigFactor);
 
-    // 6. Film Grain Noise
+    // 7. Film Grain Noise
     const grainNoise = fract(sin(dot(uvCoord, vec2(12.9898, 78.233))).mul(43758.5453)).sub(0.5).mul(this.uGrainIntensity);
     const afterGrain = afterVignette.add(grainNoise.mul(this.uEnableGrain));
 
-    // Desaturation as fear rises (grayscale blend)
+    // 8. Desaturation as fear rises (grayscale blend)
     const gray = dot(afterGrain, vec3(0.299, 0.587, 0.114));
     const finalRgb = mix(afterGrain, vec3(gray, gray, gray), this.uFear.mul(0.35));
 
@@ -141,12 +162,21 @@ export class PostFX {
   }
 
   update(dt: number, fear: number): void {
+    if (!this.isReady) return;
     this.pulseTime += dt * (2.0 + fear * 4.0);
     const fearPulse = fear * (1.0 + Math.sin(this.pulseTime) * 0.15);
     this.uFear.value = Math.max(0, Math.min(1.0, fearPulse));
   }
 
   render(): void {
-    this.pipeline.render();
+    if (this.pipeline && this.isReady) {
+      this.pipeline.render();
+    }
+  }
+
+  dispose(): void {
+    this.isReady = false;
+    this.pipeline = null;
+    console.log('[PostFX] PostFX disposed cleanly.');
   }
 }
