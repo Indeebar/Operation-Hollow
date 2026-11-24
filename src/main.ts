@@ -6,6 +6,8 @@ import {
 import { Renderer } from './render/Renderer';
 import { Sky } from './render/Sky';
 import { GroundMist } from './render/GroundMist';
+import { PostFX } from './render/PostFX';
+import { AudioManager } from './audio/AudioManager';
 import { Time } from './core/Time';
 import { Input } from './core/Input';
 import { Game } from './core/Game';
@@ -32,6 +34,15 @@ const promptMsgEl = document.getElementById('prompt-msg') as HTMLDivElement;
 // Debug panel refs
 const debugPanel = document.getElementById('debug-panel') as HTMLDivElement;
 const dbgFpsLive = document.getElementById('dbg-fps-live') as HTMLSpanElement;
+const dbgPostfxMaster = document.getElementById('dbg-postfx-master') as HTMLInputElement;
+const dbgBloom = document.getElementById('dbg-bloom') as HTMLInputElement;
+const dbgVignette = document.getElementById('dbg-vignette') as HTMLInputElement;
+const dbgGrain = document.getElementById('dbg-grain') as HTMLInputElement;
+const dbgChromatic = document.getElementById('dbg-chromatic') as HTMLInputElement;
+const dbgGrading = document.getElementById('dbg-grading') as HTMLInputElement;
+const dbgFearSlider = document.getElementById('dbg-fear-slider') as HTMLInputElement;
+const dbgFearVal = document.getElementById('dbg-fear-val') as HTMLSpanElement;
+
 const dbgMoonShadow = document.getElementById('dbg-moon-shadow') as HTMLInputElement;
 const dbgTorchShadow = document.getElementById('dbg-torch-shadow') as HTMLInputElement;
 const dbgMist = document.getElementById('dbg-mist') as HTMLInputElement;
@@ -40,6 +51,13 @@ const dbgViewmodelPass = document.getElementById('dbg-viewmodel-pass') as HTMLIn
 const dbgPr10 = document.getElementById('dbg-pr-10') as HTMLButtonElement;
 const dbgPr125 = document.getElementById('dbg-pr-125') as HTMLButtonElement;
 const dbgPr15 = document.getElementById('dbg-pr-15') as HTMLButtonElement;
+
+// Pause Menu refs
+const pauseMenu = document.getElementById('pause-menu') as HTMLDivElement;
+const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement;
+const volumeVal = document.getElementById('volume-val') as HTMLSpanElement;
+const muteBtn = document.getElementById('mute-btn') as HTMLButtonElement;
+const resumeBtn = document.getElementById('resume-btn') as HTMLButtonElement;
 
 // ── Core systems ──────────────────────────────────────────────────────────────
 const renderer = new Renderer(canvas);
@@ -51,6 +69,7 @@ const viewmodelScene = new Scene();
 const time = new Time();
 const input = new Input(canvas);
 const game = new Game();
+const audio = new AudioManager();
 
 // ── Fog & Background ──────────────────────────────────────────────────────────
 scene.fog = new FogExp2(0x03090a, 0.017);
@@ -86,19 +105,60 @@ const flashlight = new Flashlight(player.camera, scene);
 const viewmodel = new ViewmodelRig();
 viewmodelScene.add(viewmodel.group);
 
-// Dedicated input states
+// ── Post Processing Pipeline (Milestone M6) ───────────────────────────────────
+const postFX = new PostFX(renderer.renderer, scene, player.camera);
+
+// ── Dynamic Game States ───────────────────────────────────────────────────────
 let rKeyHeldDuration = 0;
 let rKeyTriggeredHold = false;
 let renderViewmodelPass = true;
+let enablePostFXMaster = true;
+let isPaused = false;
+let fearLevel = 0.0;
+let threatLevel = 0.15;
+let footstepTimer = 0.0;
 
 // ── Quality Settings ──────────────────────────────────────────────────────────
 function updateQualityUI(preset: string): void {
   qualityToggleEl.textContent = `QUALITY: ${preset.toUpperCase()}`;
   forest.setQuality(preset as 'low' | 'medium' | 'high');
+  postFX.setQuality(preset as 'low' | 'medium' | 'high');
+
+  // Sync checkboxes
+  dbgBloom.checked = postFX.enableBloom;
+  dbgChromatic.checked = postFX.enableChromatic;
+  dbgGrading.checked = postFX.enableGrading;
+  dbgVignette.checked = postFX.enableVignette;
+  dbgGrain.checked = postFX.enableGrain;
 }
 qualityToggleEl.addEventListener('click', () => {
   const newQ = renderer.toggleQuality();
   updateQualityUI(newQ);
+});
+
+// ── Pause Menu & Audio Controls ───────────────────────────────────────────────
+function setPaused(paused: boolean): void {
+  isPaused = paused;
+  pauseMenu.style.display = isPaused ? 'flex' : 'none';
+  if (isPaused) {
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+}
+
+volumeSlider.addEventListener('input', () => {
+  const v = parseFloat(volumeSlider.value);
+  audio.setVolume(v);
+  volumeVal.textContent = `${Math.round(v * 100)}%`;
+});
+
+muteBtn.addEventListener('click', () => {
+  const muted = audio.toggleMute();
+  muteBtn.textContent = muted ? 'Unmute Audio [M]' : 'Mute Audio [M]';
+});
+
+resumeBtn.addEventListener('click', () => {
+  setPaused(false);
+  canvas.requestPointerLock();
 });
 
 // ── F4 Debug Panel Setup & Toggles ───────────────────────────────────────────
@@ -107,6 +167,30 @@ function toggleDebugPanel(): void {
   debugOpen = !debugOpen;
   debugPanel.style.display = debugOpen ? 'flex' : 'none';
 }
+
+dbgPostfxMaster.addEventListener('change', () => {
+  enablePostFXMaster = dbgPostfxMaster.checked;
+});
+dbgBloom.addEventListener('change', () => {
+  postFX.setBloomEnabled(dbgBloom.checked);
+});
+dbgVignette.addEventListener('change', () => {
+  postFX.setVignetteEnabled(dbgVignette.checked);
+});
+dbgGrain.addEventListener('change', () => {
+  postFX.setGrainEnabled(dbgGrain.checked);
+});
+dbgChromatic.addEventListener('change', () => {
+  postFX.setChromaticEnabled(dbgChromatic.checked);
+});
+dbgGrading.addEventListener('change', () => {
+  postFX.setGradingEnabled(dbgGrading.checked);
+});
+
+dbgFearSlider.addEventListener('input', () => {
+  fearLevel = parseFloat(dbgFearSlider.value);
+  dbgFearVal.textContent = fearLevel.toFixed(2);
+});
 
 dbgMoonShadow.addEventListener('change', () => {
   sky.setMoonShadow(dbgMoonShadow.checked);
@@ -137,7 +221,7 @@ dbgPr15.addEventListener('click', () => {
   renderer.renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ── F3 / F4 Key Listeners ─────────────────────────────────────────────────────
+// ── Key Listeners ─────────────────────────────────────────────────────────────
 let showFps = true;
 fpsEl.style.display = 'block';
 
@@ -155,12 +239,23 @@ window.addEventListener('keydown', e => {
     const newQ = renderer.toggleQuality();
     updateQualityUI(newQ);
   }
+  if (e.code === 'KeyM') {
+    const muted = audio.toggleMute();
+    muteBtn.textContent = muted ? 'Unmute Audio [M]' : 'Mute Audio [M]';
+  }
+  if (e.code === 'Escape') {
+    setPaused(!isPaused);
+    e.preventDefault();
+  }
 });
 
 // ── Pointer lock UI ───────────────────────────────────────────────────────────
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
   infoEl.style.display = locked ? 'none' : 'block';
+  if (!locked && !debugOpen && !isPaused) {
+    // If lost focus not by debug or pause, show click hint
+  }
 });
 
 // ── Resize ────────────────────────────────────────────────────────────────────
@@ -182,23 +277,41 @@ renderer.renderer.setAnimationLoop((now: number) => {
 
   // ── Input Handling (Slots, Firing, Aiming, Movement) ──────────────────────
   let mouseDelta = { x: 0, y: 0 };
+  const isMoving = input.isDown('KeyW') || input.isDown('KeyS') || input.isDown('KeyA') || input.isDown('KeyD');
+  const isSprinting = (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && isMoving;
+  const isCrouching = input.isDown('ControlLeft') || input.isDown('KeyC');
 
-  if (input.pointerLocked) {
+  if (input.pointerLocked && !isPaused) {
     player.update(time.delta);
     mouseDelta = input.flushMouse();
 
     // Weapon slot selection: keys 1, 2, 3
-    if (input.isJustPressed('Digit1')) viewmodel.setSlot(1);
-    if (input.isJustPressed('Digit2')) viewmodel.setSlot(2);
-    if (input.isJustPressed('Digit3')) viewmodel.setSlot(3);
+    if (input.isJustPressed('Digit1')) {
+      viewmodel.setSlot(1);
+      audio.playInteract();
+    }
+    if (input.isJustPressed('Digit2')) {
+      viewmodel.setSlot(2);
+      audio.playInteract();
+    }
+    if (input.isJustPressed('Digit3')) {
+      viewmodel.setSlot(3);
+      audio.playInteract();
+    }
 
     // Mouse wheel slot switching
-    if (input.wheelDeltaY > 0) viewmodel.nextSlot();
-    else if (input.wheelDeltaY < 0) viewmodel.prevSlot();
+    if (input.wheelDeltaY > 0) {
+      viewmodel.nextSlot();
+      audio.playInteract();
+    } else if (input.wheelDeltaY < 0) {
+      viewmodel.prevSlot();
+      audio.playInteract();
+    }
 
     // Toggle flashlight: [F]
     if (input.isJustPressed('KeyF')) {
       flashlight.toggle();
+      audio.playFlashlightClick(flashlight.isOn);
     }
 
     // Tap R for Gun Reload, Hold R (>= 0.45s) for Battery Swap
@@ -207,10 +320,14 @@ renderer.renderer.setAnimationLoop((now: number) => {
       if (rKeyHeldDuration >= 0.45 && !rKeyTriggeredHold) {
         rKeyTriggeredHold = true;
         flashlight.startBatterySwap();
+        audio.playBatterySwap();
       }
     } else {
       if (rKeyHeldDuration > 0 && rKeyHeldDuration < 0.45 && !rKeyTriggeredHold) {
-        viewmodel.startReload();
+        if (viewmodel.ammoInMag < viewmodel.magCapacity && viewmodel.reserveAmmo > 0) {
+          viewmodel.startReload();
+          audio.playReload();
+        }
       }
       rKeyHeldDuration = 0;
       rKeyTriggeredHold = false;
@@ -218,19 +335,36 @@ renderer.renderer.setAnimationLoop((now: number) => {
 
     // Fire weapon: [LMB]
     if (input.isMouseJustPressed(0)) {
-      viewmodel.tryFire();
+      if (viewmodel.tryFire()) {
+        audio.playGunshot();
+      }
     }
 
     // Aim down sights (ADS): [RMB]
     viewmodel.setAiming(input.isMouseDown(2));
+
+    // Footstep audio trigger
+    if (isMoving) {
+      const stepInterval = isSprinting ? 0.32 : isCrouching ? 0.65 : 0.48;
+      footstepTimer += time.delta;
+      if (footstepTimer >= stepInterval) {
+        footstepTimer = 0;
+        audio.playFootstep('dirt', isSprinting, isCrouching);
+      }
+    } else {
+      footstepTimer = 0;
+    }
   } else {
     input.flushMouse();
   }
 
   input.clearFrame();
 
+  // ── Update Audio & PostFX Dynamic States ─────────────────────────────────
+  audio.update(time.delta, fearLevel, threatLevel);
+  postFX.update(time.delta, fearLevel);
+
   // ── Update Viewmodel Rig & Flashlight ────────────────────────────────────
-  const isMoving = input.isDown('KeyW') || input.isDown('KeyS') || input.isDown('KeyA') || input.isDown('KeyD');
   viewmodel.update(time.delta, flashlight.battery, mouseDelta, isMoving, time.elapsed * 8);
   flashlight.update(time.delta);
 
@@ -302,9 +436,15 @@ renderer.renderer.setAnimationLoop((now: number) => {
   }
 
   // ── Render Passes ────────────────────────────────────────────────────────
-  renderer.renderer.clear();
-  renderer.renderer.render(scene, player.camera);
+  // Main World Pass: Render either via PostProcessing Pipeline or standard render
+  if (enablePostFXMaster) {
+    postFX.render();
+  } else {
+    renderer.renderer.clear();
+    renderer.renderer.render(scene, player.camera);
+  }
 
+  // Viewmodel Pass: Depth-cleared overlay on top of screen
   if (renderViewmodelPass) {
     renderer.renderer.clearDepth();
     renderer.renderer.render(viewmodelScene, viewmodel.camera);
