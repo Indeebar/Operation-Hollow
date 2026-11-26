@@ -19,6 +19,7 @@ import {
 import type { Terrain } from './Terrain';
 import { LEVEL_DATA, TRAIL_WAYPOINTS, getTrailX, type LanternPostData } from './LevelData';
 import type { CollisionManager } from './CollisionManager';
+import { Materials } from './MaterialLibrary';
 
 /** Build a soft radial-gradient glow texture once, shared by all glow sprites */
 function createGlowTexture(color: string = '#ff9522'): CanvasTexture {
@@ -78,16 +79,9 @@ export class LevelBuilder {
     truckGroup.position.set(tData.x, truckY, tData.z);
     truckGroup.rotation.y = tData.rotY;
 
-    // Materials
-    const bodyMat = new MeshStandardMaterial({
-      color: 0x1b3624, // Forest Service Dark Pine Green
-      roughness: 0.6,
-      metalness: 0.25,
-    });
-    const bedMat = new MeshStandardMaterial({
-      color: 0x14281c,
-      roughness: 0.8,
-    });
+    // Materials (Using shared 1K PBR textures)
+    const bodyMat = Materials.truckBodyMaterial;
+    const bedMat = Materials.truckMetalMaterial;
     const glassMat = new MeshStandardMaterial({
       color: 0x0a1418,
       roughness: 0.15,
@@ -97,11 +91,7 @@ export class LevelBuilder {
       color: 0x111111,
       roughness: 0.9,
     });
-    const chromeMat = new MeshStandardMaterial({
-      color: 0x889098,
-      roughness: 0.3,
-      metalness: 0.7,
-    });
+    const chromeMat = Materials.truckMetalMaterial;
     const headlightMat = new MeshBasicMaterial({
       color: 0xfff0aa,
     });
@@ -209,20 +199,14 @@ export class LevelBuilder {
     const gateZ = LEVEL_DATA.gate.z;
     const gateGroup = new Group();
 
-    const timberMat = new MeshStandardMaterial({
-      color: 0x1c1612,
-      roughness: 0.95,
-    });
+    const timberMat = Materials.fenceWoodMaterial;
     const chainMat = new MeshStandardMaterial({
       color: 0x22262a,
       roughness: 0.7,
       metalness: 0.6,
       wireframe: true, // Cheap chainlink wire look
     });
-    const signMat = new MeshStandardMaterial({
-      color: 0x241d16,
-      roughness: 0.85,
-    });
+    const signMat = Materials.cabinWoodMaterial;
 
     // Gate Arch Posts
     const postGeo = new CylinderGeometry(0.22, 0.25, 5.5, 6);
@@ -299,29 +283,12 @@ export class LevelBuilder {
     const cabinGroup = new Group();
     cabinGroup.position.set(cData.x, cabinGroundY, cData.z);
 
-    // Materials
-    const logMat = new MeshStandardMaterial({
-      color: 0x1f1712, // Dark weathered timber
-      roughness: 0.9,
-    });
-    const floorMat = new MeshStandardMaterial({
-      color: 0x15100c, // Pine plank floor
-      roughness: 0.85,
-    });
-    const roofMat = new MeshStandardMaterial({
-      color: 0x14181a, // Dark corrugated metal roof
-      roughness: 0.7,
-      metalness: 0.3,
-    });
-    const doorMat = new MeshStandardMaterial({
-      color: 0x2d1e15,
-      roughness: 0.8,
-    });
-    const metalMat = new MeshStandardMaterial({
-      color: 0x282c30,
-      roughness: 0.5,
-      metalness: 0.6,
-    });
+    // Materials (Using shared 1K PBR textures)
+    const logMat = Materials.cabinWoodMaterial;
+    const floorMat = Materials.cabinWoodMaterial;
+    const roofMat = Materials.truckMetalMaterial;
+    const doorMat = Materials.cabinWoodMaterial;
+    const metalMat = Materials.truckMetalMaterial;
     const glassMat = new MeshStandardMaterial({
       color: 0x101a20,
       roughness: 0.2,
@@ -750,7 +717,7 @@ export class LevelBuilder {
 
   // ── 8. Trail Stake Markers (every ~20 m along trail, with tiny warm light) ──
   private buildTrailStakes(): void {
-    const stakeMat = new MeshStandardMaterial({ color: 0x1a1208, roughness: 0.95 });
+    const stakeMat = Materials.fenceWoodMaterial;
     const tapeMat = new MeshBasicMaterial({ color: 0xffa020 }); // orange reflective tape
     const stakeGeo = new CylinderGeometry(0.04, 0.05, 0.9, 4);
     const tapeGeo = new BoxGeometry(0.1, 0.06, 0.1);
@@ -790,10 +757,7 @@ export class LevelBuilder {
 
   // ── 7. Map Boundary Rocks / Cliffs (±190m perimeter) ────────────────────────
   private buildBoundaryRocks(): void {
-    const rockMat = new MeshStandardMaterial({
-      color: 0x121516,
-      roughness: 0.95,
-    });
+    const rockMat = Materials.rockMaterial;
     const rockGeo = new BoxGeometry(12, 8, 12);
 
     const addCliff = (x: number, z: number) => {

@@ -14,6 +14,7 @@ import {
 } from 'three/webgpu';
 import type { Terrain } from './Terrain';
 import { getTrailDistance, isInsideClearing } from './LevelData';
+import { Materials } from './MaterialLibrary';
 
 function seededRand(seed: number): () => number {
   let s = seed;
@@ -116,11 +117,7 @@ export class Forest {
       metalness: 0.0,
     });
 
-    const trunkMat = new MeshStandardMaterial({
-      color: new Color(0x0e0a06),
-      roughness: 0.98,
-      metalness: 0.0,
-    });
+    const trunkMat = Materials.barkMaterial;
 
     const nearTrunkGeo = new CylinderGeometry(0.12, 0.20, 1.3, 4);
     nearTrunkGeo.translate(0, 0.65, 0);
@@ -282,11 +279,7 @@ export class Forest {
     // Rocks
     const rockCount = 70;
     const rockGeo = new DodecahedronGeometry(0.28, 0);
-    const rockMat = new MeshStandardMaterial({
-      color: new Color(0x111315),
-      roughness: 0.85,
-      metalness: 0.1,
-    });
+    const rockMat = Materials.rockMaterial;
     this.rockMesh = new InstancedMesh(rockGeo, rockMat, rockCount);
 
     const rng3 = seededRand(555);

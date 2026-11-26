@@ -6,6 +6,7 @@ import {
   RepeatWrapping,
 } from 'three/webgpu';
 import { getTrailDistance, LEVEL_CLEARINGS, isInsideClearing } from './LevelData';
+import { Materials } from './MaterialLibrary';
 export { getTrailDistance, isInsideClearing };
 function hash(x: number, y: number): number {
   let h = x * 374761393 + y * 668265263;
@@ -188,11 +189,15 @@ export class Terrain {
     roughnessTex.wrapS = RepeatWrapping;
     roughnessTex.wrapT = RepeatWrapping;
 
+    // Use 1K PBR ground normal map for rich surface depth under the flashlight
+    const groundNormal = Materials.groundMaterial.normalMap;
+
     const mat = new MeshStandardMaterial({
       map: diffuseTex,
+      normalMap: groundNormal,
       roughnessMap: roughnessTex,
-      roughness: 0.75,
-      metalness: 0.15, // wet sheen under faint moonlight
+      roughness: 0.8,
+      metalness: 0.08, // subtle wet night sheen under faint moonlight
     });
 
     this.mesh = new Mesh(geo, mat);

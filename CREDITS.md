@@ -21,7 +21,13 @@
 - Zero external audio files required — the game runs 100% procedurally with zero missing asset warnings.
 
 ### Geometry & Textures
-- **Procedural Terrain**: Multioctave FBM noise generator with packed-dirt trail splatting.
+- **1K PBR Textures** (CC0 / Public Domain via [ambientCG](https://ambientcg.com)):
+  - **Ground / Forest Floor**: `Ground037` by Lennart Demes (CC0) — Diffuse, Normal (GL), Roughness.
+  - **Pine Bark**: `Bark014` by Lennart Demes (CC0) — Diffuse, Normal (GL), Roughness.
+  - **Rocks & Cliffs**: `Rock035` by Lennart Demes (CC0) — Diffuse, Normal (GL), Roughness.
+  - **Wood Planks (Cabin, Floor, Fence)**: `Wood051` by Lennart Demes (CC0) — Diffuse, Normal (GL), Roughness.
+  - **Weathered Painted Metal (Ranger Truck & Gate)**: `Metal029` by Lennart Demes (CC0) — Diffuse, Normal (GL), Roughness.
+- **Procedural Terrain**: Multioctave FBM noise generator with packed-dirt trail splatting, tire ruts, and normal mapping.
 - **Procedural Instanced Pine Forest**: Stacked cone foliage with organic vertex jitter displacement.
 - **Clutter**: Procedurally generated canvas alpha-cutout fern cards, low-poly dodecahedron rocks, and fallen tree trunks.
 - **Viewmodel Rig**: Handcrafted procedural tactical rifle with iron sights, left forearm sleeve, tactical glove, and canvas CRT tracker display.
