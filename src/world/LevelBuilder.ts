@@ -20,6 +20,7 @@ import type { Terrain } from './Terrain';
 import { LEVEL_DATA, TRAIL_WAYPOINTS, getTrailX, type LanternPostData } from './LevelData';
 import type { CollisionManager } from './CollisionManager';
 import { Materials } from './MaterialLibrary';
+import { Models } from './ModelLibrary';
 
 /** Build a soft radial-gradient glow texture once, shared by all glow sprites */
 function createGlowTexture(color: string = '#ff9522'): CanvasTexture {
@@ -79,6 +80,9 @@ export class LevelBuilder {
     truckGroup.position.set(tData.x, truckY, tData.z);
     truckGroup.rotation.y = tData.rotY;
 
+    const truckPlaceholder = new Group();
+    truckGroup.add(truckPlaceholder);
+
     // Materials (Using shared 1K PBR textures)
     const bodyMat = Materials.truckBodyMaterial;
     const bedMat = Materials.truckMetalMaterial;
@@ -99,88 +103,46 @@ export class LevelBuilder {
       color: 0xaa2211,
     });
 
-    // Main Chassis & Lower Body (2.2m wide, 5.2m long, 0.75m high)
+    // Fallback primitive truck while /models/truck.glb loads
     const lowerBody = new Mesh(new BoxGeometry(2.2, 0.75, 5.0), bodyMat);
     lowerBody.position.set(0, 0.75, 0);
     lowerBody.castShadow = true;
     lowerBody.receiveShadow = true;
-    truckGroup.add(lowerBody);
+    truckPlaceholder.add(lowerBody);
 
-    // Cab (Front compartment with roof and windshield)
     const cab = new Mesh(new BoxGeometry(2.1, 0.95, 2.3), bodyMat);
     cab.position.set(0, 1.55, 0.4);
     cab.castShadow = true;
-    truckGroup.add(cab);
+    truckPlaceholder.add(cab);
 
-    // Windshield (facing forward +Z)
-    const windshield = new Mesh(new BoxGeometry(1.95, 0.7, 0.15), glassMat);
-    windshield.position.set(0, 1.55, 1.52);
-    windshield.rotation.x = -0.3;
-    truckGroup.add(windshield);
-
-    // Rear Window
-    const rearWindow = new Mesh(new BoxGeometry(1.85, 0.55, 0.1), glassMat);
-    rearWindow.position.set(0, 1.6, -0.72);
-    truckGroup.add(rearWindow);
-
-    // Side Windows
-    const sideWinL = new Mesh(new BoxGeometry(0.1, 0.55, 1.8), glassMat);
-    sideWinL.position.set(-1.03, 1.55, 0.4);
-    const sideWinR = sideWinL.clone();
-    sideWinR.position.x = 1.03;
-    truckGroup.add(sideWinL, sideWinR);
-
-    // Truck Bed (Rear cargo area)
-    const bedFloor = new Mesh(new BoxGeometry(2.1, 0.15, 2.4), bedMat);
-    bedFloor.position.set(0, 0.95, -1.8);
-    truckGroup.add(bedFloor);
-
-    const bedWallL = new Mesh(new BoxGeometry(0.15, 0.65, 2.4), bodyMat);
-    bedWallL.position.set(-1.0, 1.3, -1.8);
-    const bedWallR = bedWallL.clone();
-    bedWallR.position.x = 1.0;
-    const tailgate = new Mesh(new BoxGeometry(2.0, 0.65, 0.15), bodyMat);
-    tailgate.position.set(0, 1.3, -2.95);
-    truckGroup.add(bedWallL, bedWallR, tailgate);
-
-    // Front Grill & Bumpers
-    const grill = new Mesh(new BoxGeometry(1.8, 0.5, 0.2), chromeMat);
-    grill.position.set(0, 0.75, 2.55);
-    const frontBumper = new Mesh(new BoxGeometry(2.3, 0.35, 0.35), chromeMat);
-    frontBumper.position.set(0, 0.45, 2.65);
-    const rearBumper = frontBumper.clone();
-    rearBumper.position.set(0, 0.45, -3.05);
-    truckGroup.add(grill, frontBumper, rearBumper);
-
-    // Headlights
     const hlL = new Mesh(new BoxGeometry(0.4, 0.25, 0.08), headlightMat);
     hlL.position.set(-0.75, 0.82, 2.58);
     const hlR = hlL.clone();
     hlR.position.x = 0.75;
-    truckGroup.add(hlL, hlR);
-
-    // Taillights
     const tlL = new Mesh(new BoxGeometry(0.25, 0.3, 0.08), taillightMat);
     tlL.position.set(-0.9, 1.3, -3.02);
     const tlR = tlL.clone();
     tlR.position.x = 0.9;
-    truckGroup.add(tlL, tlR);
+    truckGroup.add(hlL, hlR, tlL, tlR);
 
-    // Wheels (4 big rugged truck tires)
-    const wheelGeo = new CylinderGeometry(0.45, 0.45, 0.35, 12);
-    wheelGeo.rotateZ(Math.PI / 2);
-    const wheelPositions = [
-      [-1.1, 0.45, 1.6],
-      [1.1, 0.45, 1.6],
-      [-1.1, 0.45, -1.8],
-      [1.1, 0.45, -1.8],
-    ];
-    for (const [wx, wy, wz] of wheelPositions) {
-      const wheel = new Mesh(wheelGeo, tireMat);
-      wheel.position.set(wx, wy, wz);
-      wheel.castShadow = true;
-      truckGroup.add(wheel);
-    }
+    // Load glTF Ranger Truck (Kenney CC0) and scale to exact collision footprint
+    void Models.loadClone('/models/truck.glb').then((truckModel) => {
+      const fitted = Models.fitToFootprint(truckModel, new Vector3(2.5, 2.2, 5.6), {
+        darken: 0.45,
+        minRoughness: 0.65,
+        maxMetalness: 0.4,
+      });
+      truckGroup.remove(truckPlaceholder);
+      truckGroup.add(fitted);
+    }).catch((err) => {
+      console.warn('[LevelBuilder] Failed to load /models/truck.glb:', err);
+    });
+
+    // Keep unused material refs quiet if needed
+    void bedMat;
+    void glassMat;
+    void tireMat;
+    void chromeMat;
 
     this.group.add(truckGroup);
 
@@ -394,38 +356,78 @@ export class LevelBuilder {
     steps.position.set(W / 2 + porchW + 0.6, 0.07, 0);
     cabinGroup.add(steps);
 
-    // ── Interior Props
-    // 1. Ranger Desk (in main room at X = -3.5, Z = -2.5)
+    // ── Interior Props (glTF models matching existing collision footprints)
+    const interiorPlaceholder = new Group();
+    cabinGroup.add(interiorPlaceholder);
+
+    // 1. Ranger Desk (in main room at X = -3.2, Z = -2.5)
     const deskTop = new Mesh(new BoxGeometry(2.2, 0.1, 1.1), doorMat);
     deskTop.position.set(-3.2, 0.9, -2.5);
     const deskLegs = new Mesh(new BoxGeometry(2.0, 0.85, 0.9), logMat);
     deskLegs.position.set(-3.2, 0.45, -2.5);
-    cabinGroup.add(deskTop, deskLegs);
+    interiorPlaceholder.add(deskTop, deskLegs);
 
-    // 2. Bunk Bed (in main room at X = -3.5, Z = -4.8)
+    // 2. Bunk Bed (in main room at X = -3.5, Z = -4.6)
     const bunkFrame = new Mesh(new BoxGeometry(1.4, 1.8, 2.4), metalMat);
     bunkFrame.position.set(-3.5, 0.9, -4.6);
-    cabinGroup.add(bunkFrame);
+    interiorPlaceholder.add(bunkFrame);
 
     // 3. Diesel Generator (in generator room at X = 0, Z = 4.5)
     const genBody = new Mesh(new BoxGeometry(1.8, 1.2, 1.4), metalMat);
     genBody.position.set(0, 0.6, 4.5);
     const genPanel = new Mesh(new BoxGeometry(0.6, 0.4, 0.08), new MeshBasicMaterial({ color: 0x334433 }));
     genPanel.position.set(0, 0.9, 3.75);
-    cabinGroup.add(genBody, genPanel);
+    interiorPlaceholder.add(genBody, genPanel);
 
     // ── Dim Interior Light (Hanging over desk)
     this.cabinLight = new PointLight(0xffb266, 2.4, 14, 2.0);
     this.cabinLight.position.set(-2.0, 2.8, -1.0);
     cabinGroup.add(this.cabinLight);
 
-    // Small emissive lantern mesh hanging from ceiling
+    // Small emissive lantern mesh hanging from ceiling (replaced by lantern.glb when loaded)
     const lampMesh = new Mesh(
       new CylinderGeometry(0.12, 0.16, 0.35, 6),
       new MeshBasicMaterial({ color: 0xffaa44 })
     );
     lampMesh.position.set(-2.0, 2.8, -1.0);
-    cabinGroup.add(lampMesh);
+    interiorPlaceholder.add(lampMesh);
+
+    void Promise.all([
+      Models.loadClone('/models/desk.glb'),
+      Models.loadClone('/models/bed.glb'),
+      Models.loadClone('/models/generator.glb'),
+      Models.loadClone('/models/lantern.glb'),
+    ]).then(([deskModel, bedModel, genModel, lampModel]) => {
+      const deskFitted = Models.fitToFootprint(deskModel, new Vector3(2.2, 0.9, 1.05), {
+        darken: 0.45,
+        minRoughness: 0.7,
+      });
+      deskFitted.position.set(-3.2, 0.35, -2.5);
+
+      const bedFitted = Models.fitToFootprint(bedModel, new Vector3(1.4, 1.3, 2.3), {
+        rotY: Math.PI / 2,
+        darken: 0.45,
+        minRoughness: 0.8,
+      });
+      bedFitted.position.set(-3.5, 0.35, -4.6);
+
+      const genFitted = Models.fitToFootprint(genModel, new Vector3(1.8, 1.2, 1.3), {
+        darken: 0.45,
+        minRoughness: 0.65,
+      });
+      genFitted.position.set(0, 0.35, 4.5);
+
+      const lampFitted = Models.fitToFootprint(lampModel, new Vector3(0.35, 0.55, 0.35), {
+        darken: 0.5,
+        minRoughness: 0.7,
+      });
+      lampFitted.position.set(-2.0, 2.55, -1.0);
+
+      cabinGroup.remove(interiorPlaceholder);
+      cabinGroup.add(deskFitted, bedFitted, genFitted, lampFitted);
+    }).catch((err) => {
+      console.warn('[LevelBuilder] Failed to load cabin interior glTF models:', err);
+    });
 
     this.group.add(cabinGroup);
 
@@ -570,6 +572,17 @@ export class LevelBuilder {
       const flameMesh = new Mesh(flameGeo, lData.isLit ? flameMatLit : flameMatDead);
 
       lGroup.add(postMesh, armMesh, cageMesh, flameMesh);
+
+      // Replace boxy lantern cage with optimized lantern.glb
+      void Models.loadClone('/models/lantern.glb').then((lanternModel) => {
+        const fitted = Models.fitToFootprint(lanternModel, new Vector3(0.42, 0.65, 0.42), {
+          darken: 0.45,
+          minRoughness: 0.7,
+        });
+        fitted.position.set(0, 2.75, 0.85);
+        lGroup.remove(cageMesh);
+        lGroup.add(fitted);
+      }).catch(() => { /* keep fallback cageMesh */ });
 
       // Warm PointLight (non-shadow for high FPS)
       const light = new PointLight(0xff9933, lData.isLit ? 3.0 : 0.0, 22, 2.0);

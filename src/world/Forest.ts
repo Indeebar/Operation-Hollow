@@ -11,10 +11,14 @@ import {
   CanvasTexture,
   DoubleSide,
   Vector3,
+  Box3,
+  Mesh,
+  BufferGeometry,
 } from 'three/webgpu';
 import type { Terrain } from './Terrain';
 import { getTrailDistance, isInsideClearing } from './LevelData';
 import { Materials } from './MaterialLibrary';
+import { Models } from './ModelLibrary';
 
 function seededRand(seed: number): () => number {
   let s = seed;
@@ -344,6 +348,73 @@ export class Forest {
     this.meshes.push(this.logMesh);
 
     this.cullPast(0, 0, this.currentCullDist);
+
+    // Swap procedural cone/cylinder tree geometries for optimized CC0 glTF trees
+    void this.loadTreeModels();
+  }
+
+  private async loadTreeModels(): Promise<void> {
+    try {
+      const [pineRoot, deadRoot] = await Promise.all([
+        Models.loadClone('/models/pine_1.glb'),
+        Models.loadClone('/models/dead_tree.glb'),
+      ]);
+
+      pineRoot.updateMatrixWorld(true);
+      const pineParts: { geo: BufferGeometry; xzSpan: number }[] = [];
+      const tmpBox = new Box3();
+      const tmpSize = new Vector3();
+
+      pineRoot.traverse((obj) => {
+        if (obj instanceof Mesh && obj.geometry) {
+          const geo = obj.geometry.clone();
+          geo.applyMatrix4(obj.matrixWorld);
+          geo.scale(1.65, 1.65, 1.65);
+          geo.computeBoundingBox();
+          geo.computeBoundingSphere();
+          tmpBox.copy(geo.boundingBox!);
+          tmpBox.getSize(tmpSize);
+          pineParts.push({ geo, xzSpan: tmpSize.x + tmpSize.z });
+        }
+      });
+
+      if (pineParts.length >= 2) {
+        // Smaller XZ footprint is the trunk; wider XZ footprint is the pine canopy
+        pineParts.sort((a, b) => a.xzSpan - b.xzSpan);
+        const trunkGeo = pineParts[0].geo;
+        const foliageGeo = pineParts[pineParts.length - 1].geo;
+
+        this.nearTrunkMesh.geometry.dispose();
+        this.farTrunkMesh.geometry.dispose();
+        this.nearFoliageMesh.geometry.dispose();
+        this.farFoliageMesh.geometry.dispose();
+
+        this.nearTrunkMesh.geometry = trunkGeo;
+        this.farTrunkMesh.geometry = trunkGeo;
+        this.nearFoliageMesh.geometry = foliageGeo;
+        this.farFoliageMesh.geometry = foliageGeo;
+      } else if (pineParts.length === 1) {
+        this.nearFoliageMesh.geometry.dispose();
+        this.farFoliageMesh.geometry.dispose();
+        this.nearFoliageMesh.geometry = pineParts[0].geo;
+        this.farFoliageMesh.geometry = pineParts[0].geo;
+      }
+
+      deadRoot.updateMatrixWorld(true);
+      deadRoot.traverse((obj) => {
+        if (obj instanceof Mesh && obj.geometry) {
+          const geo = obj.geometry.clone();
+          geo.applyMatrix4(obj.matrixWorld);
+          geo.scale(2.0, 2.0, 2.0);
+          geo.computeBoundingBox();
+          geo.computeBoundingSphere();
+          this.deadMesh.geometry.dispose();
+          this.deadMesh.geometry = geo;
+        }
+      });
+    } catch (err) {
+      console.warn('[Forest] Failed to load glTF tree models, keeping procedural fallback:', err);
+    }
   }
 
   setClutterVisible(visible: boolean): void {

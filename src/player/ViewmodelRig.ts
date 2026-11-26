@@ -3,6 +3,7 @@ import {
   Group,
   Mesh,
   BoxGeometry,
+  Box3,
   CylinderGeometry,
   PlaneGeometry,
   MeshStandardMaterial,
@@ -14,6 +15,7 @@ import {
   MathUtils,
   PerspectiveCamera,
 } from 'three/webgpu';
+import { Models } from '../world/ModelLibrary';
 
 export type WeaponSlot = 1 | 2 | 3; // 1 = Rifle, 2 = Flashlight only / Lowered, 3 = Flare
 
@@ -88,6 +90,9 @@ export class ViewmodelRig {
     this.rifleGroup = new Group();
     this.group.add(this.rifleGroup);
 
+    const placeholderGroup = new Group();
+    this.rifleGroup.add(placeholderGroup);
+
     // Consistent dark metal & composite polymer materials (zero unlit white)
     const metalMat = new MeshStandardMaterial({
       color: new Color(0x1a1e22),
@@ -107,51 +112,44 @@ export class ViewmodelRig {
       metalness: 0.7,
     });
 
-    // Receiver
+    // Fallback procedural rifle (removed once rifle.glb finishes loading)
     const receiverGeo = new BoxGeometry(0.036, 0.06, 0.26);
-    this.rifleGroup.add(new Mesh(receiverGeo, metalMat));
+    placeholderGroup.add(new Mesh(receiverGeo, metalMat));
 
-    // Barrel
     const barrelGeo = new CylinderGeometry(0.010, 0.012, 0.24, 8);
     barrelGeo.rotateX(Math.PI / 2);
     barrelGeo.translate(0, 0.012, -0.23);
-    this.rifleGroup.add(new Mesh(barrelGeo, metalMat));
+    placeholderGroup.add(new Mesh(barrelGeo, metalMat));
 
-    // Handguard
     const handguardGeo = new BoxGeometry(0.034, 0.042, 0.16);
     handguardGeo.translate(0, 0.008, -0.17);
-    this.rifleGroup.add(new Mesh(handguardGeo, polymerMat));
+    placeholderGroup.add(new Mesh(handguardGeo, polymerMat));
 
-    // Stock
     const stockGeo = new BoxGeometry(0.030, 0.07, 0.14);
     stockGeo.translate(0, -0.015, 0.18);
-    this.rifleGroup.add(new Mesh(stockGeo, polymerMat));
+    placeholderGroup.add(new Mesh(stockGeo, polymerMat));
 
-    // Magazine (Dark metal accent, NO white)
     const magGeo = new BoxGeometry(0.024, 0.11, 0.055);
     magGeo.rotateX(0.12);
     magGeo.translate(0, -0.075, -0.03);
-    this.rifleGroup.add(new Mesh(magGeo, darkAccentMat));
+    placeholderGroup.add(new Mesh(magGeo, darkAccentMat));
 
-    // Pistol grip
     const gripGeo = new BoxGeometry(0.026, 0.085, 0.038);
     gripGeo.rotateX(0.38);
     gripGeo.translate(0, -0.062, 0.075);
-    this.rifleGroup.add(new Mesh(gripGeo, polymerMat));
+    placeholderGroup.add(new Mesh(gripGeo, polymerMat));
 
-    // Tactical Rail
     const railGeo = new BoxGeometry(0.020, 0.010, 0.22);
     railGeo.translate(0, 0.035, -0.02);
-    this.rifleGroup.add(new Mesh(railGeo, darkAccentMat));
+    placeholderGroup.add(new Mesh(railGeo, darkAccentMat));
 
-    // Iron sights (Rear notch & front post with emissive green sight dot)
     const rearSightGeo = new BoxGeometry(0.014, 0.018, 0.008);
     rearSightGeo.translate(0, 0.046, 0.06);
-    this.rifleGroup.add(new Mesh(rearSightGeo, darkAccentMat));
+    placeholderGroup.add(new Mesh(rearSightGeo, darkAccentMat));
 
     const frontSightGeo = new BoxGeometry(0.006, 0.022, 0.006);
     frontSightGeo.translate(0, 0.036, -0.31);
-    this.rifleGroup.add(new Mesh(frontSightGeo, darkAccentMat));
+    placeholderGroup.add(new Mesh(frontSightGeo, darkAccentMat));
 
     // Small emissive green sight bead on front sight post
     const dotGeo = new BoxGeometry(0.003, 0.003, 0.003);
@@ -181,6 +179,62 @@ export class ViewmodelRig {
     this.muzzleFlashMesh = new Mesh(flashGeo, flashMat);
     this.muzzleFlashMesh.visible = false;
     this.rifleGroup.add(this.muzzleFlashMesh);
+
+    // Load glTF rifle model (CC0 bolt_action_rifle_7_62) into viewmodel rig
+    void Models.loadClone('/models/rifle.glb').then((rifleModel) => {
+      // Detect which end along X is the thicker buttstock vs narrow barrel
+      let negMinY = Infinity, negMaxY = -Infinity;
+      let posMinY = Infinity, posMaxY = -Infinity;
+      const v = new Vector3();
+      rifleModel.traverse((obj) => {
+        if (obj instanceof Mesh && obj.geometry?.attributes.position) {
+          const pos = obj.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            v.fromBufferAttribute(pos, i);
+            if (v.x < -0.35) {
+              negMinY = Math.min(negMinY, v.y);
+              negMaxY = Math.max(negMaxY, v.y);
+            } else if (v.x > 0.35) {
+              posMinY = Math.min(posMinY, v.y);
+              posMaxY = Math.max(posMaxY, v.y);
+            }
+          }
+        }
+      });
+      const negSpanY = negMaxY - negMinY;
+      const posSpanY = posMaxY - posMinY;
+      // Point narrow barrel toward -Z
+      const rotY = negSpanY < posSpanY ? -Math.PI / 2 : Math.PI / 2;
+
+      const fitted = Models.fitToFootprint(rifleModel, new Vector3(0.08, 0.16, 0.68), {
+        rotY,
+        alignBottom: false,
+        centerXZ: true,
+        darken: 0.42,
+        minRoughness: 0.68,
+        maxMetalness: 0.5,
+        castShadow: false,
+        receiveShadow: true,
+      });
+
+      // Center vertically around receiver height and align muzzle near z = -0.36 (prevents wall clipping)
+      const box = new Box3().setFromObject(fitted);
+      const center = new Vector3();
+      box.getCenter(center);
+      fitted.position.y -= center.y;
+      fitted.position.z -= (box.min.z + 0.36);
+
+      // Update muzzle & sight anchors to match loaded rifle barrel tip
+      const muzzleZ = -0.37;
+      this.muzzleFlashLight.position.set(0, 0.015, muzzleZ);
+      this.muzzleFlashMesh.position.set(0, 0.015, muzzleZ - 0.37 + 0.37);
+      this.sightDot.position.set(0, 0.002, 0.02);
+
+      this.rifleGroup.remove(placeholderGroup);
+      this.rifleGroup.add(fitted);
+    }).catch((err) => {
+      console.warn('[ViewmodelRig] Failed to load /models/rifle.glb, keeping fallback:', err);
+    });
 
     // ── 2. Left Arm & Hand with Attached Wrist Device ────────────────────
     this.leftArmGroup = new Group();

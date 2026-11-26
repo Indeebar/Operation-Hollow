@@ -30,4 +30,13 @@
 - **Procedural Terrain**: Multioctave FBM noise generator with packed-dirt trail splatting, tire ruts, and normal mapping.
 - **Procedural Instanced Pine Forest**: Stacked cone foliage with organic vertex jitter displacement.
 - **Clutter**: Procedurally generated canvas alpha-cutout fern cards, low-poly dodecahedron rocks, and fallen tree trunks.
-- **Viewmodel Rig**: Handcrafted procedural tactical rifle with iron sights, left forearm sleeve, tactical glove, and canvas CRT tracker display.
+- **Viewmodel Rig**: Tactical rifle model + procedural left forearm sleeve, tactical glove, and canvas CRT tracker display.
+
+### 3D Models (`public/models/`)
+- **Rifle (`rifle.glb`)**: `bolt_action_rifle_7_62` from [Poly Haven](https://polyhaven.com/a/bolt_action_rifle_7_62) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1K WebP textures, 6,994 triangles).
+- **Ranger Truck (`truck.glb`)**: `vehicle-truck-green` from [Kenney Car Kit / Starter-Kit-Racing](https://kenney.nl/assets/car-kit) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1,104 triangles).
+- **Lantern (`lantern.glb`)**: `wooden_lantern_01` from [Poly Haven](https://polyhaven.com/a/wooden_lantern_01) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1K WebP textures, 2,116 triangles).
+- **Diesel Generator (`generator.glb`)**: `portable_generator` from [Poly Haven](https://polyhaven.com/a/portable_generator) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1K WebP textures, 4,476 triangles).
+- **Ranger Desk (`desk.glb`)**: `metal_office_desk` from [Poly Haven](https://polyhaven.com/a/metal_office_desk) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1K WebP textures, 2,069 triangles).
+- **Bunk / Day Bed (`bed.glb`)**: `vintage_day_bed` from [Poly Haven](https://polyhaven.com/a/vintage_day_bed) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt, 1K WebP textures, 2,306 triangles).
+- **Pine Trees (`pine_1.glb`) & Dead Trees (`dead_tree.glb`)**: `PineTree_1` (1,911 triangles) & `CommonTree_Dead_1` (2,360 triangles) from [Quaternius Nature Pack](https://quaternius.com/) — **CC0** (Public Domain), optimized via `gltf-transform` (meshopt).
