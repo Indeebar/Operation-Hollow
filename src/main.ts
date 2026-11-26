@@ -55,6 +55,8 @@ const promptMsgEl = document.getElementById('prompt-msg') as HTMLDivElement;
 // Debug panel refs
 const debugPanel = document.getElementById('debug-panel') as HTMLDivElement;
 const dbgFpsLive = document.getElementById('dbg-fps-live') as HTMLSpanElement;
+const dbgFrameCpu = document.getElementById('dbg-frame-cpu') as HTMLSpanElement;
+const dbgFrameGpu = document.getElementById('dbg-frame-gpu') as HTMLSpanElement;
 const dbgPostfxMaster = document.getElementById('dbg-postfx-master') as HTMLInputElement;
 const dbgBloom = document.getElementById('dbg-bloom') as HTMLInputElement;
 const dbgVignette = document.getElementById('dbg-vignette') as HTMLInputElement;
@@ -82,6 +84,9 @@ const dbgViewmodelPass = document.getElementById('dbg-viewmodel-pass') as HTMLIn
 const dbgPr10 = document.getElementById('dbg-pr-10') as HTMLButtonElement;
 const dbgPr125 = document.getElementById('dbg-pr-125') as HTMLButtonElement;
 const dbgPr15 = document.getElementById('dbg-pr-15') as HTMLButtonElement;
+
+// Objective HUD ref
+const objectiveEl = document.getElementById('objective-bar') as HTMLDivElement;
 
 // Pause Menu refs
 const pauseMenu = document.getElementById('pause-menu') as HTMLDivElement;
@@ -164,6 +169,17 @@ let fearLevel = 0.0;
 let threatLevel = 0.15;
 let footstepTimer = 0.0;
 let isDisposed = false;
+
+// Performance timing & allocation caches
+const tempCamPos = new Vector3();
+let cpuTimeMs = 0;
+let gpuRenderTimeMs = 0;
+let perfTimer = 0;
+
+// Objective elements
+const objTextEl = document.getElementById('objective-text');
+const objDistEl = document.getElementById('objective-dist');
+const objIconEl = document.querySelector('.obj-icon') as HTMLElement | null;
 
 // Initialize Debug UI checkboxes to match initial state
 if (dbgPostfxMaster) dbgPostfxMaster.checked = false;
@@ -363,6 +379,7 @@ addManagedListener(window, 'resize', handleResize);
 let started = false;
 renderer.renderer.setAnimationLoop((now: number) => {
   if (isDisposed) return;
+  const updateStart = performance.now();
   time.tick(now);
 
   if (!started) {
@@ -461,8 +478,40 @@ renderer.renderer.setAnimationLoop((now: number) => {
     postFX.update(time.delta, fearLevel);
   }
 
+  // ── Objective & Wrist Radio Navigation Calculation ──────────────────────
+  const pp = player.getObject().position;
+  // Current target: Ranger Station 7 cabin
+  const targetObj = LEVEL_DATA.cabin;
+  const dxObj = targetObj.x - pp.x;
+  const dzObj = targetObj.z - pp.z;
+  const objDist = Math.sqrt(dxObj * dxObj + dzObj * dzObj);
+
+  // Bearing to objective in world coords
+  // Facing direction: yaw 0 is -Z, yaw PI is +Z. Forward vector is (-sin(yaw), 0, -cos(yaw)).
+  const playerYaw = player.getYaw();
+  const worldAngleToTarget = Math.atan2(dxObj, -dzObj); // Angle relative to forward (-Z)
+  // Relative angle to objective for wrist compass/arrow
+  let relObjAngle = worldAngleToTarget - playerYaw;
+  while (relObjAngle > Math.PI) relObjAngle -= Math.PI * 2;
+  while (relObjAngle < -Math.PI) relObjAngle += Math.PI * 2;
+
+  // Update HUD objective
+  if (objDistEl) objDistEl.textContent = `(${Math.round(objDist)}m)`;
+  if (objIconEl) {
+    const deg = Math.round((relObjAngle * 180) / Math.PI);
+    objIconEl.style.transform = `rotate(${deg}deg)`;
+  }
+
   // ── Update Viewmodel Rig & Flashlight ────────────────────────────────────
-  viewmodel.update(time.delta, flashlight.battery, mouseDelta, isMoving, time.elapsed * 8);
+  viewmodel.update(
+    time.delta,
+    flashlight.battery,
+    mouseDelta,
+    isMoving,
+    time.elapsed * 8,
+    relObjAngle,
+    objDist,
+  );
   flashlight.update(time.delta);
 
   // Crosshair visibility
@@ -520,14 +569,17 @@ renderer.renderer.setAnimationLoop((now: number) => {
   batteryCountEl.textContent = `(x${flashlight.spareBatteries})`;
 
   // ── Update World ─────────────────────────────────────────────────────────
-  const pp = player.getObject().position;
   sky.update(time.elapsed, pp.x, pp.y, pp.z);
   groundMist.update(time.elapsed, pp.x, pp.z);
   forest.update(pp.x, pp.z);
-  levelBuilder.update(time.elapsed, player.camera.getWorldPosition(new Vector3()));
+  levelBuilder.update(time.elapsed, player.camera.getWorldPosition(tempCamPos));
+
+  // End CPU update timing
+  const renderStart = performance.now();
+  const currentCpuTime = renderStart - updateStart;
 
   if (showFps) {
-    fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'} | ${renderer.quality.toUpperCase()}`;
+    fpsEl.textContent = `FPS: ${time.fps} | POS: (${pp.x.toFixed(1)}, ${pp.z.toFixed(1)}) | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'} | ${renderer.quality.toUpperCase()}`;
   }
   if (debugOpen) {
     dbgFpsLive.textContent = `${time.fps} FPS`;
@@ -555,6 +607,18 @@ renderer.renderer.setAnimationLoop((now: number) => {
   if (renderViewmodelPass) {
     renderer.renderer.clearDepth();
     renderer.renderer.render(viewmodelScene, viewmodel.camera);
+  }
+
+  const frameEnd = performance.now();
+  const currentGpuTime = frameEnd - renderStart;
+
+  // Smooth frame timing readouts (every 10 frames)
+  perfTimer++;
+  if (perfTimer % 10 === 0) {
+    cpuTimeMs = currentCpuTime;
+    gpuRenderTimeMs = currentGpuTime;
+    if (dbgFrameCpu) dbgFrameCpu.textContent = cpuTimeMs.toFixed(1);
+    if (dbgFrameGpu) dbgFrameGpu.textContent = gpuRenderTimeMs.toFixed(1);
   }
 });
 

@@ -13,10 +13,29 @@ import {
   Vector3,
   DoubleSide,
   Object3D,
+  AdditiveBlending,
+  CanvasTexture,
 } from 'three/webgpu';
 import type { Terrain } from './Terrain';
-import { LEVEL_DATA, type LanternPostData } from './LevelData';
+import { LEVEL_DATA, TRAIL_WAYPOINTS, getTrailX, type LanternPostData } from './LevelData';
 import type { CollisionManager } from './CollisionManager';
+
+/** Build a soft radial-gradient glow texture once, shared by all glow sprites */
+function createGlowTexture(color: string = '#ff9522'): CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, color + 'ff');
+  grad.addColorStop(0.35, color + 'aa');
+  grad.addColorStop(0.7, color + '44');
+  grad.addColorStop(1, color + '00');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return new CanvasTexture(canvas);
+}
 
 export interface LanternPostInstance {
   data: LanternPostData;
@@ -36,6 +55,9 @@ export class LevelBuilder {
   // Cabin interior dim light
   cabinLight!: PointLight;
 
+  // Reusable world-space vector — avoids per-frame allocation in update()
+  private readonly _camWorldPos: Vector3 = new Vector3();
+
   constructor(private terrain: Terrain, private collision: CollisionManager) {
     this.buildRangerTruck();
     this.buildForestGate();
@@ -43,6 +65,7 @@ export class LevelBuilder {
     this.buildLanternPosts();
     this.buildTheHollow();
     this.buildGuideGlows();
+    this.buildTrailStakes();
     this.buildBoundaryRocks();
   }
 
@@ -702,14 +725,18 @@ export class LevelBuilder {
   }
 
   // ── 6. Distant Warm Lantern Glows (Guides eye down trail) ───────────────────
+  // The orange box was: PlaneGeometry(1.2,1.2) with solid MeshBasicMaterial + DoubleSide.
+  // Fixed: radial-gradient canvas texture + AdditiveBlending + depthWrite:false + larger sprite.
   private buildGuideGlows(): void {
-    const glowGeo = new PlaneGeometry(1.2, 1.2);
+    const glowTex = createGlowTexture('#ff9522');
+    const glowGeo = new PlaneGeometry(2.4, 2.4);
     const glowMat = new MeshBasicMaterial({
-      color: 0xff9522,
+      map: glowTex,
       transparent: true,
-      opacity: 0.4,
-      side: DoubleSide,
+      opacity: 1.0,              // opacity baked into texture alpha
+      blending: AdditiveBlending,
       depthWrite: false,
+      side: DoubleSide,
     });
 
     for (const g of LEVEL_DATA.guideGlows) {
@@ -718,6 +745,46 @@ export class LevelBuilder {
       glowMesh.position.set(g.x, gy, g.z);
       this.guideGlows.push(glowMesh);
       this.group.add(glowMesh);
+    }
+  }
+
+  // ── 8. Trail Stake Markers (every ~20 m along trail, with tiny warm light) ──
+  private buildTrailStakes(): void {
+    const stakeMat = new MeshStandardMaterial({ color: 0x1a1208, roughness: 0.95 });
+    const tapeMat = new MeshBasicMaterial({ color: 0xffa020 }); // orange reflective tape
+    const stakeGeo = new CylinderGeometry(0.04, 0.05, 0.9, 4);
+    const tapeGeo = new BoxGeometry(0.1, 0.06, 0.1);
+
+    // Walk the trail from z=-155 to z=145 in 20m steps
+    for (let z = -155; z <= 140; z += 20) {
+      const x = getTrailX(z);
+      const y = this.terrain.getHeight(x, z);
+
+      // Alternate left/right offset by 1.6m so stakes line both sides
+      for (const side of [-1.6, 1.6]) {
+        const sx = x + side;
+        const sy = this.terrain.getHeight(sx, z);
+
+        const stakeGroup = new Group();
+        stakeGroup.position.set(sx, sy, z);
+
+        const stake = new Mesh(stakeGeo, stakeMat);
+        stake.position.y = 0.45;
+        stakeGroup.add(stake);
+
+        const tape = new Mesh(tapeGeo, tapeMat);
+        tape.position.y = 0.86;
+        stakeGroup.add(tape);
+
+        // Tiny warm point light on every 4th stake (every 80m) to avoid overdraw
+        if (z % 80 === 0) {
+          const stakeLight = new PointLight(0xff8822, 0.8, 7, 2.0);
+          stakeLight.position.y = 1.0;
+          stakeGroup.add(stakeLight);
+        }
+
+        this.group.add(stakeGroup);
+      }
     }
   }
 
@@ -756,9 +823,13 @@ export class LevelBuilder {
       l.update(time);
     }
 
-    // 2. Billboarding for distant guide glows (face camera)
-    for (const g of this.guideGlows) {
+    // 2. Billboarding for distant guide glows (face camera) + subtle opacity flicker
+    for (let i = 0; i < this.guideGlows.length; i++) {
+      const g = this.guideGlows[i];
       g.lookAt(cameraPos);
+      // Per-glow flicker: oscillate opacity 0.65–1.0
+      (g.material as MeshBasicMaterial).opacity =
+        0.82 + Math.sin(time * 2.3 + i * 1.7) * 0.18;
     }
   }
 }

@@ -285,3 +285,38 @@ body {
   font-size: 14px;
   border: 1px solid rgba(240, 160, 80, 0.4);
 }
+
+/* Objective Line (Bottom-Left) */
+#objective-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  background: rgba(5, 12, 14, 0.85);
+  border: 1px solid rgba(56, 224, 120, 0.35);
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #f0fdf4;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.obj-icon {
+  color: #38e078;
+  font-size: 14px;
+  display: inline-block;
+  transform-origin: center;
+}
+
+#objective-text {
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+#objective-dist {
+  color: #86efac;
+  font-size: 11px;
+}

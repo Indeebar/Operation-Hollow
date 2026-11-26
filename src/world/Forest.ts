@@ -170,7 +170,7 @@ export class Forest {
         attempts++;
       } while (
         attempts < 40 &&
-        (isInsideClearing(x, z) || getTrailDistance(x, z) < 2.2)
+        (isInsideClearing(x, z) || getTrailDistance(x, z) < 4.0)
       );
 
       const y = terrain.getHeight(x, z);
@@ -265,7 +265,7 @@ export class Forest {
         fAttempts++;
       } while (
         fAttempts < 20 &&
-        (isInsideClearing(fx, fz) || getTrailDistance(fx, fz) < 1.6)
+        (isInsideClearing(fx, fz) || getTrailDistance(fx, fz) < 4.0)
       );
 
       const fy = terrain.getHeight(fx, fz);
@@ -300,7 +300,7 @@ export class Forest {
         rAttempts++;
       } while (
         rAttempts < 20 &&
-        (isInsideClearing(rx, rz) || getTrailDistance(rx, rz) < 1.8)
+        (isInsideClearing(rx, rz) || getTrailDistance(rx, rz) < 4.0)
       );
 
       const ry = terrain.getHeight(rx, rz);
@@ -336,7 +336,7 @@ export class Forest {
         lAttempts++;
       } while (
         lAttempts < 20 &&
-        (isInsideClearing(lx, lz) || getTrailDistance(lx, lz) < 2.2)
+        (isInsideClearing(lx, lz) || getTrailDistance(lx, lz) < 4.0)
       );
 
       const ly = terrain.getHeight(lx, lz);
@@ -437,7 +437,8 @@ export class Forest {
   update(playerX: number, playerZ: number): void {
     const dx = playerX - this.lastCullPos.x;
     const dz = playerZ - this.lastCullPos.z;
-    if (dx * dx + dz * dz > 16) {
+    // Throttle culling: re-cull only when player moves at least 8 meters (dx^2 + dz^2 > 64)
+    if (dx * dx + dz * dz > 64) {
       this.lastCullPos.set(playerX, 0, playerZ);
       this.cullPast(playerX, playerZ, this.currentCullDist);
     }

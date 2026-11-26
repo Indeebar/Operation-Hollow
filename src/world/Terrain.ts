@@ -116,7 +116,8 @@ export class Terrain {
         const n = fbm(px * 0.06, py * 0.06, 4);
         const fineNoise = hash(px, py);
         const trailDist = getTrailDistance(wx, wz);
-        let trailT = Math.max(0, 1 - trailDist / 3.0);
+        // Wider 4m trail corridor
+        let trailT = Math.max(0, 1 - trailDist / 4.0);
 
         // Check if inside any clearing for dirt floor
         for (const c of LEVEL_CLEARINGS) {
@@ -134,17 +135,34 @@ export class Terrain {
         let b = 9 + n * 6;
         let roughness = 110 + n * 60 + fineNoise * 20;
 
-        // Lighter packed dirt trail & clearings (~#2e2a22)
+        // Distinct, readable packed-dirt trail with visible wheel ruts
         if (trailT > 0) {
-          const trailR = 42 + n * 12;
-          const trailG = 38 + n * 10;
-          const trailB = 30 + n * 8;
-          const tSmoothed = smoothstep(trailT);
+          // Base trail color: warm packed earth (~#5a4e3c)
+          let trailR = 76 + n * 18;
+          let trailG = 66 + n * 14;
+          let trailB = 50 + n * 10;
 
+          // Double wheel ruts at distance ±1.2m from trail centerline
+          const rut1 = Math.abs(trailDist - 1.2);
+          const rut2 = Math.abs(trailDist - 1.2); // symmetry already in trailDist
+          if (rut1 < 0.45) {
+            // Darker, damper depressed compacted ruts
+            const rutFactor = 1 - rut1 / 0.45;
+            trailR *= (1 - rutFactor * 0.38);
+            trailG *= (1 - rutFactor * 0.35);
+            trailB *= (1 - rutFactor * 0.3);
+          } else if (trailDist < 0.6) {
+            // Raised center ridge between tire ruts: slightly lighter and rougher
+            trailR += 14;
+            trailG += 12;
+            trailB += 8;
+          }
+
+          const tSmoothed = smoothstep(trailT);
           r = lerp(r, trailR, tSmoothed);
           g = lerp(g, trailG, tSmoothed);
           b = lerp(b, trailB, tSmoothed);
-          roughness = lerp(roughness, 135 + fineNoise * 30, tSmoothed);
+          roughness = lerp(roughness, 155 + fineNoise * 30, tSmoothed);
         }
 
         const idx = (py * 512 + px) * 4;

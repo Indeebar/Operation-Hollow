@@ -50,6 +50,10 @@ export class PlayerController {
     this.pivot.rotation.set(0, this.yaw, 0);
   }
 
+  getYaw(): number {
+    return this.yaw;
+  }
+
   update(dt: number): void {
     // Mouse look
     const mouse = this.input.flushMouse();

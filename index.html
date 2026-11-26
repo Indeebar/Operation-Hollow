@@ -20,6 +20,9 @@
           <span>PERF & POSTFX DEBUG (F4)</span>
           <span id="dbg-fps-live">0 FPS</span>
         </div>
+        <div class="dbg-row" style="color: #93c5fd; font-size: 11px;">
+          <span>CPU Frame: <span id="dbg-frame-cpu">0.0</span>ms | GPU/Render: <span id="dbg-frame-gpu">0.0</span>ms</span>
+        </div>
         <div class="dbg-section-title">POST-PROCESSING</div>
         <div class="dbg-row">
           <label><input type="checkbox" id="dbg-postfx-master" /> Post-Processing Master (OFF)</label>
@@ -113,6 +116,13 @@
             <button class="menu-btn" id="resume-btn">Resume Game [ESC]</button>
           </div>
         </div>
+      </div>
+
+      <!-- Objective Bar (Bottom Left) -->
+      <div id="objective-bar">
+        <span class="obj-icon">➤</span>
+        <span id="objective-text">Follow the trail to Ranger Station 7</span>
+        <span id="objective-dist">(112m)</span>
       </div>
 
       <!-- Tactical Status HUD -->

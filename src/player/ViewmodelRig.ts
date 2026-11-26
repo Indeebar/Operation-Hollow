@@ -279,7 +279,14 @@ export class ViewmodelRig {
     this.isAiming = aim && this.currentSlot === 1 && this.switchProgress > 0.9;
   }
 
-  private drawScreen(battery: number, ammo: number, reserve: number, threat: number): void {
+  private drawScreen(
+    battery: number,
+    ammo: number,
+    reserve: number,
+    threat: number,
+    objectiveAngle?: number,
+    objectiveDist?: number,
+  ): void {
     const ctx = this.screenCtx;
     ctx.fillStyle = '#030d06';
     ctx.fillRect(0, 0, 128, 128);
@@ -299,32 +306,63 @@ export class ViewmodelRig {
 
     ctx.font = '10px monospace';
     ctx.fillStyle = '#86efac';
-    ctx.fillText(`PWR: ${Math.round(battery)}%`, 10, 34);
+    ctx.fillText(`PWR: ${Math.round(battery)}%`, 10, 32);
 
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 12px monospace';
     ctx.fillStyle = ammo <= 5 ? '#f87171' : '#22c55e';
-    ctx.fillText(`AMMO: ${ammo}/${reserve}`, 10, 52);
+    ctx.fillText(`AMMO: ${ammo}/${reserve}`, 10, 48);
 
+    // Objective navigation readout
     ctx.font = '9px monospace';
     ctx.fillStyle = '#4ade80';
-    ctx.fillText('THREAT / PROX', 10, 72);
+    ctx.fillText('NAV / OBJ', 10, 64);
 
-    ctx.fillStyle = '#04180b';
-    ctx.fillRect(10, 78, 108, 14);
+    const distText = objectiveDist !== undefined ? `${Math.round(objectiveDist)}m` : '--m';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#86efac';
+    ctx.fillText(distText, 10, 78);
+
+    // Compass / Objective arrow
+    const cx = 96;
+    const cy = 68;
     ctx.strokeStyle = '#16a34a';
-    ctx.strokeRect(10, 78, 108, 14);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (objectiveAngle !== undefined) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(objectiveAngle);
+      ctx.fillStyle = '#38e078';
+      ctx.beginPath();
+      ctx.moveTo(0, -11);
+      ctx.lineTo(6, 6);
+      ctx.lineTo(0, 2);
+      ctx.lineTo(-6, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Threat bar
+    ctx.fillStyle = '#04180b';
+    ctx.fillRect(10, 88, 108, 10);
+    ctx.strokeStyle = '#16a34a';
+    ctx.strokeRect(10, 88, 108, 10);
 
     const threatWidth = Math.max(0, Math.min(108, Math.round(threat * 108)));
     ctx.fillStyle = threat > 0.7 ? '#ef4444' : threat > 0.4 ? '#f59e0b' : '#22c55e';
-    ctx.fillRect(11, 79, threatWidth, 12);
+    ctx.fillRect(11, 89, threatWidth, 8);
 
     ctx.strokeStyle = '#4ade80';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(10, 110);
+    ctx.moveTo(10, 112);
     for (let x = 10; x <= 118; x += 6) {
       const wave = Math.sin((x + Date.now() * 0.015) * 0.4) * (2 + threat * 6);
-      ctx.lineTo(x, 110 + wave);
+      ctx.lineTo(x, 112 + wave);
     }
     ctx.stroke();
 
@@ -337,6 +375,8 @@ export class ViewmodelRig {
     mouseDelta: { x: number; y: number },
     isMoving: boolean,
     bobTime: number,
+    objectiveAngle?: number,
+    objectiveDist?: number,
   ): void {
     // ── 1. Slot Raising / Lowering Animations ────────────────────────────
     if (this.currentSlot !== this.targetSlot) {
@@ -432,7 +472,14 @@ export class ViewmodelRig {
 
     // ── 5. Left Arm / Wrist Device Update ────────────────────────────────
     // Wrist device stays steady on forearm with subtle idle sway
-    this.drawScreen(battery, this.ammoInMag, this.reserveAmmo, this.threatLevel);
+    this.drawScreen(
+      battery,
+      this.ammoInMag,
+      this.reserveAmmo,
+      this.threatLevel,
+      objectiveAngle,
+      objectiveDist,
+    );
     this.screenLight.intensity = 0.2 + this.threatLevel * 0.35;
   }
 
