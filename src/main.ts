@@ -3,6 +3,7 @@ import {
   Scene,
   FogExp2,
   Color,
+  Vector3,
 } from 'three/webgpu';
 import { Renderer } from './render/Renderer';
 import { Sky } from './render/Sky';
@@ -17,6 +18,9 @@ import { Flashlight } from './player/Flashlight';
 import { ViewmodelRig } from './player/ViewmodelRig';
 import { Terrain } from './world/Terrain';
 import { Forest } from './world/Forest';
+import { CollisionManager } from './world/CollisionManager';
+import { LevelBuilder } from './world/LevelBuilder';
+import { LEVEL_DATA } from './world/LevelData';
 
 // ── Guard against double initialization & HMR leak ───────────────────────────
 interface GameInstance {
@@ -114,16 +118,26 @@ const groundMist = new GroundMist(scene);
 
 // ── Forest (Tree LODs, 25m shadow cutoff, <=88m culling) ─────────────────────
 console.log('[Forest] Building instanced trees with near/far LODs...');
-const forest = new Forest(terrain, 2000);
+const forest = new Forest(terrain, 4000);
 for (const mesh of forest.getMeshes()) {
   scene.add(mesh);
 }
 console.log('[Forest] Done.');
 
+// ── Collision & Level ──────────────────────────────────────────────────────────
+const collision = new CollisionManager();
+const levelBuilder = new LevelBuilder(terrain, collision);
+scene.add(levelBuilder.group);
+
 // ── Player & Camera ───────────────────────────────────────────────────────────
-const player = new PlayerController(input, terrain);
+const player = new PlayerController(input, terrain, collision);
 scene.add(player.getObject());
-player.getObject().position.set(0, terrain.getHeight(0, 0) + 1.75, 0);
+
+// Spawn at truck, facing north toward the trail (+Z direction)
+const spawnX = LEVEL_DATA.spawn.x;
+const spawnZ = LEVEL_DATA.spawn.z;
+player.getObject().position.set(spawnX, terrain.getHeight(spawnX, spawnZ) + 1.75, spawnZ);
+player.setYaw(Math.PI); // yaw=0 faces -Z; PI faces +Z (down the trail)
 
 // ── Flashlight ────────────────────────────────────────────────────────────────
 const flashlight = new Flashlight(player.camera, scene);
@@ -510,6 +524,7 @@ renderer.renderer.setAnimationLoop((now: number) => {
   sky.update(time.elapsed, pp.x, pp.y, pp.z);
   groundMist.update(time.elapsed, pp.x, pp.z);
   forest.update(pp.x, pp.z);
+  levelBuilder.update(time.elapsed, player.camera.getWorldPosition(new Vector3()));
 
   if (showFps) {
     fpsEl.textContent = `FPS: ${time.fps} | LIGHT: ${flashlight.isOn ? 'ON' : 'OFF'} | ${renderer.quality.toUpperCase()}`;

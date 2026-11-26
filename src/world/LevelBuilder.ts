@@ -34,7 +34,7 @@ export class LevelBuilder {
   guideGlows: Mesh[] = [];
 
   // Cabin interior dim light
-  cabinLight: PointLight;
+  cabinLight!: PointLight;
 
   constructor(private terrain: Terrain, private collision: CollisionManager) {
     this.buildRangerTruck();

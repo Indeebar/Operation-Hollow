@@ -44,6 +44,12 @@ export class PlayerController {
     return this.pivot;
   }
 
+  /** Set initial yaw (radians). 0 = facing -Z, Math.PI = facing +Z (toward trail) */
+  setYaw(yaw: number): void {
+    this.yaw = yaw;
+    this.pivot.rotation.set(0, this.yaw, 0);
+  }
+
   update(dt: number): void {
     // Mouse look
     const mouse = this.input.flushMouse();
@@ -78,8 +84,16 @@ export class PlayerController {
     if (this.input.isDown('KeyA')) move.addScaledVector(right, -speed);
     if (this.input.isDown('KeyD')) move.addScaledVector(right, speed);
 
+    const prevPos = this.pivot.position.clone();
     this.pivot.position.x += move.x * dt;
     this.pivot.position.z += move.z * dt;
+
+    // Collision resolution (slide against AABB/circle obstacles)
+    if (this.collision) {
+      const resolved = this.collision.resolve(prevPos, this.pivot.position, 0.35);
+      this.pivot.position.x = resolved.x;
+      this.pivot.position.z = resolved.z;
+    }
 
     // Boundary clamp
     this.pivot.position.x = MathUtils.clamp(this.pivot.position.x, -BOUNDARY, BOUNDARY);
