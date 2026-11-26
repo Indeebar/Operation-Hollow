@@ -7,6 +7,7 @@ import {
 import type { Input } from '../core/Input';
 import type { Time } from '../core/Time';
 import type { Terrain } from '../world/Terrain';
+import type { CollisionManager } from '../world/CollisionManager';
 
 const WALK_SPEED = 3.0;
 const SPRINT_SPEED = 5.5;
@@ -14,7 +15,7 @@ const CROUCH_SPEED = 1.5;
 const PLAYER_HEIGHT = 1.75;
 const CROUCH_HEIGHT = 0.9;
 const STAMINA_MAX = 6.0;
-const BOUNDARY = 195; // half of 400 - margin
+const BOUNDARY = 192; // 384m playable area boundary clamp
 
 export class PlayerController {
   camera: PerspectiveCamera;
@@ -30,6 +31,7 @@ export class PlayerController {
   constructor(
     private input: Input,
     private terrain: Terrain,
+    private collision?: CollisionManager,
     private sensitivity: number = 0.002,
   ) {
     this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 500);

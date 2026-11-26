@@ -5,8 +5,8 @@ import {
   CanvasTexture,
   RepeatWrapping,
 } from 'three/webgpu';
-
-// Simple 2D value noise
+import { getTrailDistance, LEVEL_CLEARINGS, isInsideClearing } from './LevelData';
+export { getTrailDistance, isInsideClearing };
 function hash(x: number, y: number): number {
   let h = x * 374761393 + y * 668265263;
   h = ((h ^ (h >>> 13)) * 1274126177) & 0x7fffffff;
@@ -52,12 +52,6 @@ function fbm(x: number, y: number, octaves: number = 5): number {
 export const TERRAIN_SIZE = 400;
 export const TERRAIN_SEGMENTS = 128;
 
-// Trail path function: winding trail starting from spawn (0, 0)
-export function getTrailDistance(x: number, z: number): number {
-  const trailX = Math.sin(z * 0.03) * 12 + Math.sin(z * 0.01) * 20;
-  return Math.abs(x - trailX);
-}
-
 export class Terrain {
   private mesh: Mesh;
 
@@ -80,7 +74,19 @@ export class Terrain {
       const trailDist = getTrailDistance(wx, wz);
       if (trailDist < 4.0) {
         const factor = smoothstep(trailDist / 4.0);
-        h = lerp(h * 0.5, h, factor);
+        h = lerp(h * 0.4, h, factor);
+      }
+
+      // Flatten clearings (Station 7, The Hollow, Spawn)
+      for (const c of LEVEL_CLEARINGS) {
+        const dx = wx - c.x;
+        const dz = wz - c.z;
+        const dSq = dx * dx + dz * dz;
+        const rad = c.radius;
+        if (dSq < rad * rad) {
+          const factor = smoothstep(Math.sqrt(dSq) / rad);
+          h = lerp(h * 0.25, h, factor);
+        }
       }
 
       pos.setY(i, h);
@@ -110,27 +116,35 @@ export class Terrain {
         const n = fbm(px * 0.06, py * 0.06, 4);
         const fineNoise = hash(px, py);
         const trailDist = getTrailDistance(wx, wz);
-        const trailT = Math.max(0, 1 - trailDist / 3.0);
+        let trailT = Math.max(0, 1 - trailDist / 3.0);
+
+        // Check if inside any clearing for dirt floor
+        for (const c of LEVEL_CLEARINGS) {
+          const dx = wx - c.x;
+          const dz = wz - c.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < c.radius) {
+            trailT = Math.max(trailT, Math.max(0, 1 - dist / c.radius));
+          }
+        }
 
         // Near-black wet ground base (~#090e0b to #0e1410)
         let r = 7 + n * 6;
         let g = 11 + n * 7;
         let b = 9 + n * 6;
-        // Wet roughness with fine grain noise (lower = shinier wet puddles/damp mud)
         let roughness = 110 + n * 60 + fineNoise * 20;
 
-        // Lighter dirt trail (~#2e2a22)
+        // Lighter packed dirt trail & clearings (~#2e2a22)
         if (trailT > 0) {
-          const trailR = 44 + n * 12;
-          const trailG = 40 + n * 10;
-          const trailB = 32 + n * 8;
+          const trailR = 42 + n * 12;
+          const trailG = 38 + n * 10;
+          const trailB = 30 + n * 8;
           const tSmoothed = smoothstep(trailT);
 
           r = lerp(r, trailR, tSmoothed);
           g = lerp(g, trailG, tSmoothed);
           b = lerp(b, trailB, tSmoothed);
-          // Packed damp dirt path sheen
-          roughness = lerp(roughness, 130 + fineNoise * 30, tSmoothed);
+          roughness = lerp(roughness, 135 + fineNoise * 30, tSmoothed);
         }
 
         const idx = (py * 512 + px) * 4;

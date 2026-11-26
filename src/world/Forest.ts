@@ -13,7 +13,7 @@ import {
   Vector3,
 } from 'three/webgpu';
 import type { Terrain } from './Terrain';
-import { getTrailDistance } from './Terrain';
+import { getTrailDistance, isInsideClearing } from './LevelData';
 
 function seededRand(seed: number): () => number {
   let s = seed;
@@ -163,23 +163,14 @@ export class Forest {
       let z = 0;
       let attempts = 0;
 
-      const forceNear = i < 850;
-      const maxRadius = forceNear ? 60 : 185;
-
       do {
-        if (forceNear) {
-          const angle = rng() * Math.PI * 2;
-          const rad = 6.2 + Math.sqrt(rng()) * (60 - 6.2);
-          x = Math.cos(angle) * rad;
-          z = Math.sin(angle) * rad;
-        } else {
-          x = (rng() - 0.5) * maxRadius * 2;
-          z = (rng() - 0.5) * maxRadius * 2;
-        }
+        // Distribute uniformly across the 380m playable area
+        x = (rng() - 0.5) * 370;
+        z = (rng() - 0.5) * 370;
         attempts++;
       } while (
-        attempts < 30 &&
-        (x * x + z * z < 6.0 * 6.0 || getTrailDistance(x, z) < 1.6)
+        attempts < 40 &&
+        (isInsideClearing(x, z) || getTrailDistance(x, z) < 2.2)
       );
 
       const y = terrain.getHeight(x, z);
@@ -207,12 +198,19 @@ export class Forest {
       });
 
       if (this.deadTrees.length < deadCount && rng() < 0.13) {
-        const dAngle = rng() * Math.PI * 2;
-        const dRad = 6.5 + Math.sqrt(rng()) * (forceNear ? 60 : 180);
-        const dx = Math.cos(dAngle) * dRad;
-        const dz = Math.sin(dAngle) * dRad;
+        let dx = 0;
+        let dz = 0;
+        let dAttempts = 0;
+        do {
+          dx = (rng() - 0.5) * 360;
+          dz = (rng() - 0.5) * 360;
+          dAttempts++;
+        } while (
+          dAttempts < 30 &&
+          (isInsideClearing(dx, dz) || getTrailDistance(dx, dz) < 2.0)
+        );
 
-        if (getTrailDistance(dx, dz) >= 1.5) {
+        if (dAttempts < 30) {
           const dy = terrain.getHeight(dx, dz);
           const dScale = Math.min(1.8, 0.8 + rng() * 0.8);
           this.deadTrees.push({
@@ -258,12 +256,19 @@ export class Forest {
 
     const rng2 = seededRand(888);
     for (let i = 0; i < fernCount; i++) {
-      const rad = 2.2 + Math.sqrt(rng2()) * 50;
-      const ang = rng2() * Math.PI * 2;
-      const fx = Math.cos(ang) * rad;
-      const fz = Math.sin(ang) * rad;
-      const fy = terrain.getHeight(fx, fz);
+      let fx = 0;
+      let fz = 0;
+      let fAttempts = 0;
+      do {
+        fx = (rng2() - 0.5) * 360;
+        fz = (rng2() - 0.5) * 360;
+        fAttempts++;
+      } while (
+        fAttempts < 20 &&
+        (isInsideClearing(fx, fz) || getTrailDistance(fx, fz) < 1.6)
+      );
 
+      const fy = terrain.getHeight(fx, fz);
       const fscale = 0.5 + rng2() * 0.6;
       this.dummy.position.set(fx, fy, fz);
       this.dummy.rotation.set((rng2() - 0.5) * 0.2, rng2() * Math.PI * 2, (rng2() - 0.5) * 0.2);
@@ -286,12 +291,19 @@ export class Forest {
 
     const rng3 = seededRand(555);
     for (let i = 0; i < rockCount; i++) {
-      const rad = 3.0 + Math.sqrt(rng3()) * 55;
-      const ang = rng3() * Math.PI * 2;
-      const rx = Math.cos(ang) * rad;
-      const rz = Math.sin(ang) * rad;
-      const ry = terrain.getHeight(rx, rz);
+      let rx = 0;
+      let rz = 0;
+      let rAttempts = 0;
+      do {
+        rx = (rng3() - 0.5) * 360;
+        rz = (rng3() - 0.5) * 360;
+        rAttempts++;
+      } while (
+        rAttempts < 20 &&
+        (isInsideClearing(rx, rz) || getTrailDistance(rx, rz) < 1.8)
+      );
 
+      const ry = terrain.getHeight(rx, rz);
       const rscale = 0.4 + rng3() * 0.8;
       this.dummy.position.set(rx, ry + 0.08, rz);
       this.dummy.rotation.set(rng3() * Math.PI, rng3() * Math.PI, rng3() * Math.PI);
@@ -315,11 +327,17 @@ export class Forest {
 
     const rng4 = seededRand(333);
     for (let i = 0; i < logCount; i++) {
-      const rad = 6.0 + Math.sqrt(rng4()) * 60;
-      const ang = rng4() * Math.PI * 2;
-      const lx = Math.cos(ang) * rad;
-      const lz = Math.sin(ang) * rad;
-      if (getTrailDistance(lx, lz) < 1.8) continue;
+      let lx = 0;
+      let lz = 0;
+      let lAttempts = 0;
+      do {
+        lx = (rng4() - 0.5) * 360;
+        lz = (rng4() - 0.5) * 360;
+        lAttempts++;
+      } while (
+        lAttempts < 20 &&
+        (isInsideClearing(lx, lz) || getTrailDistance(lx, lz) < 2.2)
+      );
 
       const ly = terrain.getHeight(lx, lz);
       const lscale = 0.7 + rng4() * 0.6;
